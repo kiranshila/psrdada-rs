@@ -1,0 +1,3 @@
+[submodule "libpsrdada-sys/vendor"]
+	path = libpsrdada-sys/vendor
+	url = https://git.code.sf.net/p/psrdada/code

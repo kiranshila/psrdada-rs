@@ -1,0 +1,8 @@
+[package]
+name = "psrdada"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+psrdada-sys = {path = "./psrdada-sys"}
+page_size = "0.4"
