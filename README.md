@@ -1,6 +1,6 @@
 # psrdada-rs
 
-A pure Rust high level wrapper around the
+A Rust high level wrapper around the
 [psrdada](http://psrdada.sourceforge.net/) shared memory ring buffer library,
 common in radio astronomy.
 
