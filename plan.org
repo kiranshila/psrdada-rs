@@ -1,0 +1,15 @@
+#+title: Plan
+
+- Some high level abstraction of the DadaHDU itself (including header and data
+  blocks)
+- Reading and writing from the blocks should be transparent and safe
+  + How do we do this if you have no idea what kind of data lives in there
+- Headers should be a dict, I think the keys are always strings
+  + Maybe do some smart serde of the values
+- How do we handle cleanup?
+  + What is this library for?
+  + If it's for packet capture, we probably want to manage the memory of the
+    buffers we create. I.e. we should cleanup on destruction
+- Logs should just use tracing, do PSRDada logs have log level information?
+- If not, just use =info=
+- How do we make all the things we use safe?

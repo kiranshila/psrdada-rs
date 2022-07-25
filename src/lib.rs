@@ -1,44 +1,64 @@
-use psrdada_sys::ipcbuf_get_bufsz;
-use psrdada_sys::ipcbuf_get_nbufs;
+use derive_builder::Builder;
+use logging::create_stderr_log;
+use utils::PsrdadaError;
+mod logging;
+mod utils;
+use crate::utils::PsrdadaResult;
 use psrdada_sys::{
-    ipcbuf_connect, ipcbuf_create, ipcbuf_create_work, ipcbuf_destroy, ipcbuf_lock, ipcbuf_t,
+    dada_hdu_destroy, dada_hdu_t, ipcbuf_connect, ipcbuf_create, ipcbuf_destroy, ipcbuf_get_bufsz,
+    ipcbuf_get_nbufs, ipcbuf_t, ipcio_connect, ipcio_create_work, ipcio_destroy, ipcio_t,
+    multilog_t,
 };
 
-#[derive(Debug)]
-pub enum PsrdadaError {
-    HDUInitError,
-    HDUConnectError,
-    HDUDestroyError,
-}
-
-#[derive(Debug)]
+#[derive(Builder, Debug)]
+#[builder(setter(into))]
 pub struct DadaDB {
+    // Non-defaultable things
     pub key: i32,
+    pub log_name: String,
+    #[builder(setter(skip), field(build = "self.construct()?"))]
+    hdu: dada_hdu_t,
+    // Defaults from psrdada
+    #[builder(default = "4")]
     num_bufs: u64,
+    #[builder(default = "(page_size::get() as u64) * 128")]
     buf_size: u64,
+    #[builder(default = "8")]
     num_headers: u64,
+    #[builder(default = "page_size::get() as u64")]
     header_size: u64,
-    // ipcbuf_t instances
-    header_ipcbuf: ipcbuf_t,
-    data_ipcbuf: ipcbuf_t,
 }
 
-unsafe fn default_ipcbuf() -> ipcbuf_t {
-    ipcbuf_t {
-        state: 0,
-        syncid: -1,
-        semid_connect: -1,
-        semid_data: std::ptr::null_mut(),
-        shmid: std::ptr::null_mut(),
-        sync: std::ptr::null_mut(),
-        buffer: std::ptr::null_mut(),
-        shm_addr: std::ptr::null_mut(),
-        count: std::ptr::null_mut(),
-        shmkey: std::ptr::null_mut(),
-        viewbuf: 0,
-        xfer: 0,
-        soclock_buf: 0,
-        iread: -1,
+impl DadaDBBuilder {
+    fn construct(&self) -> PsrdadaResult<dada_hdu_t> {
+        // Using all the details we collected, try to make the dada pairs, etc.
+        let key = self.key.expect("Missing build arguments");
+        let header_size = self.header_size.expect("Missing build arguments");
+        let log_name = self.log_name.as_ref().expect("Missing build arguments");
+        let num_bufs = self.num_bufs.expect("Missing build arguments");
+        let buf_size = self.buf_size.expect("Missing build arguments");
+        let num_headers = self.num_headers.expect("Missing build arguments");
+        unsafe {
+            let (mut data, mut header) = construct_hdu_pair(
+                key,
+                num_bufs,
+                buf_size,
+                num_headers,
+                header_size,
+                1, // I still don't know what this is for
+            )?;
+            // Now build the hdu
+            let mut log = create_stderr_log(log_name)?;
+            Ok(dada_hdu_t {
+                header_block: &mut header,
+                data_block: &mut data,
+                header_size,
+                data_block_key: key,
+                header_block_key: key + 1,
+                header: std::ptr::null_mut(),
+                log: &mut log,
+            })
+        }
     }
 }
 
@@ -49,10 +69,10 @@ unsafe fn construct_hdu_pair(
     num_headers: u64,
     header_size: u64,
     num_readers: u32,
-) -> Result<(ipcbuf_t, ipcbuf_t), PsrdadaError> {
-    let mut data_ipcbuf = default_ipcbuf();
-    let mut header_ipcbuf = default_ipcbuf();
-    if ipcbuf_create_work(&mut data_ipcbuf, key, num_bufs, buf_size, num_readers, -1) < 0 {
+) -> PsrdadaResult<(ipcio_t, ipcbuf_t)> {
+    let mut data_ipcio = Default::default();
+    let mut header_ipcbuf = Default::default();
+    if ipcio_create_work(&mut data_ipcio, key, num_bufs, buf_size, num_readers, -1) < 0 {
         return Err(PsrdadaError::HDUInitError);
     }
     if ipcbuf_create(
@@ -64,14 +84,14 @@ unsafe fn construct_hdu_pair(
     ) < 0
     {
         // Cleanup the data buffer that ostensibly was allocated (unlike the source example)
-        destroy_hdu(&mut data_ipcbuf)?;
+        destroy_ipcio(&mut data_ipcio)?;
         return Err(PsrdadaError::HDUInitError);
     }
-    Ok((data_ipcbuf, header_ipcbuf))
+    Ok((data_ipcio, header_ipcbuf))
 }
 
-unsafe fn connect_hdu(key: i32) -> Result<ipcbuf_t, PsrdadaError> {
-    let mut placeholder = default_ipcbuf();
+unsafe fn connect_ipcbuf(key: i32) -> PsrdadaResult<ipcbuf_t> {
+    let mut placeholder = Default::default();
     let result = ipcbuf_connect(&mut placeholder, key);
     if result >= 0 {
         Ok(placeholder)
@@ -80,7 +100,17 @@ unsafe fn connect_hdu(key: i32) -> Result<ipcbuf_t, PsrdadaError> {
     }
 }
 
-unsafe fn destroy_hdu(buf: &mut ipcbuf_t) -> Result<(), PsrdadaError> {
+unsafe fn connect_ipcio(key: i32) -> PsrdadaResult<ipcio_t> {
+    let mut placeholder = Default::default();
+    let result = ipcio_connect(&mut placeholder, key);
+    if result >= 0 {
+        Ok(placeholder)
+    } else {
+        Err(PsrdadaError::HDUConnectError)
+    }
+}
+
+unsafe fn destroy_ipcbuf(buf: &mut ipcbuf_t) -> PsrdadaResult<()> {
     if ipcbuf_destroy(buf) < 0 {
         Err(PsrdadaError::HDUDestroyError)
     } else {
@@ -88,48 +118,59 @@ unsafe fn destroy_hdu(buf: &mut ipcbuf_t) -> Result<(), PsrdadaError> {
     }
 }
 
-impl DadaDB {
-    pub fn new(
-        key: i32,
-        num_bufs: Option<u64>,
-        buf_size: Option<u64>,
-        num_headers: Option<u64>,
-        header_size: Option<u64>,
-    ) -> Result<Self, PsrdadaError> {
-        let num_bufs = num_bufs.unwrap_or(4);
-        let buf_size = buf_size.unwrap_or((page_size::get() as u64) * 128);
-        let num_headers = num_headers.unwrap_or(8);
-        let header_size = header_size.unwrap_or(page_size::get() as u64);
+unsafe fn destroy_ipcio(ipc: &mut ipcio_t) -> PsrdadaResult<()> {
+    if ipcio_destroy(ipc) < 0 {
+        Err(PsrdadaError::HDUDestroyError)
+    } else {
+        Ok(())
+    }
+}
 
-        // Try to actually construct
+impl Drop for DadaDB {
+    fn drop(&mut self) {
         unsafe {
-            let (data_buf, header_buf) =
-                construct_hdu_pair(key, num_bufs, buf_size, num_headers, header_size, 1)?;
+            // Safety: This should be fine as hdu will be valid when it's constructed
+            dada_hdu_destroy(&mut self.hdu);
+        }
+    }
+}
+
+impl DadaDB {
+    /// Construct a [DataDB] from a preexisting buffer
+    pub fn connect(key: i32, mut log: multilog_t) -> Result<Self, PsrdadaError> {
+        unsafe {
+            // Connect to data and header
+            let mut data = connect_ipcio(key)?;
+            let mut header = connect_ipcbuf(key + 1)?;
+
+            // Grab some metadata
+            let num_bufs = ipcbuf_get_nbufs(&mut data.buf);
+            let buf_size = ipcbuf_get_bufsz(&mut data.buf);
+            let num_headers = ipcbuf_get_nbufs(&mut header);
+            let header_size = ipcbuf_get_bufsz(&mut header);
+
+            // Construct the data_hdu
+            let hdu = dada_hdu_t {
+                header_block: &mut header,
+                data_block: &mut data,
+                header_size,
+                data_block_key: key,
+                header_block_key: key + 1,
+                header: std::ptr::null_mut(),
+                log: &mut log,
+            };
+
+            // Return
             Ok(Self {
                 key,
                 num_bufs,
                 buf_size,
                 num_headers,
                 header_size,
-                header_ipcbuf: header_buf,
-                data_ipcbuf: data_buf,
-            })
-        }
-    }
-
-    /// Construct a [DataDB] from a preexisting buffer
-    pub fn connect(key: i32) -> Result<Self, PsrdadaError> {
-        unsafe {
-            let mut data_ipcbuf = connect_hdu(key)?;
-            let mut header_ipcbuf = connect_hdu(key + 1)?;
-            Ok(Self {
-                key,
-                num_bufs: ipcbuf_get_nbufs(&mut data_ipcbuf),
-                buf_size: ipcbuf_get_bufsz(&mut data_ipcbuf),
-                num_headers: ipcbuf_get_nbufs(&mut header_ipcbuf),
-                header_size: ipcbuf_get_bufsz(&mut header_ipcbuf),
-                header_ipcbuf,
-                data_ipcbuf,
+                log_name: std::ffi::CString::from_raw(log.name)
+                    .into_string()
+                    .map_err(|_| PsrdadaError::FFIError)?,
+                hdu,
             })
         }
     }
@@ -140,9 +181,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_name() {
-        let foo = DadaDB::connect(0xdead).unwrap();
-        dbg!(foo);
-        panic!()
+    fn test_builder() {
+        let db = DadaDBBuilder::default()
+            .key(0xdead)
+            .log_name("Test")
+            .build()
+            .unwrap();
+        println!("{:#?}", db);
+        drop(db);
     }
 }
