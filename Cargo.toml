@@ -7,4 +7,3 @@ edition = "2021"
 psrdada-sys = {path = "./psrdada-sys"}
 page_size = "0.4"
 tracing = "0.1"
-derive_builder = "0.11"

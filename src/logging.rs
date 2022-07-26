@@ -22,13 +22,17 @@ pub(crate) enum MultilogLevels {
     Debug = LOG_DEBUG,
 }
 
-pub(crate) unsafe fn create_stderr_log(name: &str) -> PsrdadaResult<multilog_t> {
+pub(crate) fn create_stderr_log(name: &str) -> PsrdadaResult<multilog_t> {
     let name_cstr = CString::new(name).map_err(|_| PsrdadaError::MultilogError)?;
-    let log_ptr = multilog_open(name_cstr.as_ptr(), 0);
-    if multilog_add(log_ptr, STDERR_FILENO as *mut FILE) < 0 {
-        Err(PsrdadaError::MultilogError)
-    } else {
-        Ok(std::ptr::read(log_ptr))
+    unsafe {
+        // Safety: The FD we give here should be valid (it's STDERR)
+        // and if multilog_open didn't fail, ptr::read will be valid
+        let log_ptr = multilog_open(name_cstr.as_ptr(), 0);
+        if multilog_add(log_ptr, STDERR_FILENO as *mut FILE) != 0 {
+            Err(PsrdadaError::MultilogError)
+        } else {
+            Ok(std::ptr::read(log_ptr))
+        }
     }
 }
 
