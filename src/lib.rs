@@ -227,7 +227,7 @@ impl DadaDB {
 
 impl<'db> WriteHalf<'db> {
     /// Push data onto the current page of the data ring buffer
-    pub fn push(&mut self, data: &[i8]) -> PsrdadaResult<()> {
+    pub fn push(&mut self, data: &[u8]) -> PsrdadaResult<()> {
         // Interestingly, PSRDada doesn't complain if we try to push more data than the buffer is sized
         assert!(data.len() as u64 <= self.parent.buf_size);
         unsafe {
@@ -238,7 +238,7 @@ impl<'db> WriteHalf<'db> {
             }
             let mut data_buf = (*(*self.parent.hdu).data_block).buf;
             // Read the next ptr
-            let data_ptr = ipcbuf_get_next_write(&mut data_buf);
+            let data_ptr = ipcbuf_get_next_write(&mut data_buf) as *mut u8;
             // Check against null
             if data_ptr.is_null() {
                 return Err(PsrdadaError::HDUWriteError);
@@ -282,7 +282,7 @@ impl<'db> WriteHalf<'db> {
 
 #[gat]
 impl<'db> LendingIterator for ReadHalf<'db> {
-    type Item<'next> = PsrdadaResult<&'next [i8]>;
+    type Item<'next> = PsrdadaResult<&'next [u8]>;
 
     fn next(&'_ mut self) -> Option<Self::Item<'_>> {
         unsafe {
@@ -312,7 +312,8 @@ impl<'db> LendingIterator for ReadHalf<'db> {
                 // If not, grab the next stuff
                 let mut bytes_available = 0u64;
                 // Safety: HDU is valid for the lifetime of Self, we're checking NULL explicitly
-                let data_ptr = ipcbuf_get_next_read(&mut data_buf, &mut bytes_available);
+                let data_ptr =
+                    ipcbuf_get_next_read(&mut data_buf, &mut bytes_available) as *const u8;
                 // Check against null
                 if data_ptr.is_null() {
                     return Some(Err(PsrdadaError::HDUReadError));
@@ -343,7 +344,7 @@ impl<'db> WriteHalf<'db> {
             }
             let header_buf = (*self.parent.hdu).header_block;
             // Read the next ptr
-            let header_ptr = ipcbuf_get_next_write(header_buf);
+            let header_ptr = ipcbuf_get_next_write(header_buf) as *mut u8;
             // Check against null
             if header_ptr.is_null() {
                 return Err(PsrdadaError::HDUWriteError);
@@ -389,7 +390,7 @@ impl<'db> ReadHalf<'db> {
 
             let header_buf = (*self.parent.hdu).header_block;
             let mut bytes_available = 0u64;
-            let header_ptr = ipcbuf_get_next_read(header_buf, &mut bytes_available);
+            let header_ptr = ipcbuf_get_next_read(header_buf, &mut bytes_available) as *mut u8;
             // Check if we got nothing
             if bytes_available == 0 {
                 if ipcbuf_mark_cleared(header_buf) != 0 {
@@ -477,7 +478,7 @@ mod tests {
             .unwrap();
         // Push some bytes
         let (mut reader, mut writer) = my_hdu.split();
-        let bytes = [0i8, 2i8, 3i8, 4i8, 5i8];
+        let bytes = [0u8, 2u8, 3u8, 4u8, 5u8];
         writer.push(&bytes).unwrap();
         let page = reader.next().unwrap().unwrap();
         assert_eq!(bytes, page);
@@ -492,9 +493,9 @@ mod tests {
             .unwrap();
         let (mut reader, mut writer) = my_hdu.split();
         // Push some bytes
-        let bytes = [0i8, 2i8, 3i8, 4i8];
+        let bytes = [0u8, 2u8, 3u8, 4u8];
         writer.push(&bytes).unwrap();
-        let bytes_two = [10i8, 11i8, 12i8, 13i8];
+        let bytes_two = [10u8, 11u8, 12u8, 13u8];
         writer.push(&bytes_two).unwrap();
         // Use an explicit scope so Rust knows the borrow is valid
         let first_page = reader.next().unwrap().unwrap();
@@ -509,7 +510,7 @@ mod tests {
         let my_hdu = DadaDBBuilder::new(key, "read_write").build(false).unwrap();
         let (_, mut writer) = my_hdu.split();
         // Push some bytes
-        let bytes = [0i8, 2i8, 3i8, 4i8, 5i8];
+        let bytes = [0u8, 2u8, 3u8, 4u8, 5u8];
         writer.push(&bytes).unwrap();
         // Spawn the thread, but wait for the read to finish before destroying
         std::thread::spawn(move || {
@@ -531,9 +532,9 @@ mod tests {
             .build(false)
             .unwrap();
         let (mut reader, mut writer) = my_hdu.split();
-        writer.push(&[0i8; 3]).unwrap();
+        writer.push(&[0u8; 3]).unwrap();
         let page = reader.next().unwrap().unwrap();
-        assert_eq!([0i8; 3], page);
+        assert_eq!([0u8; 3], page);
     }
 
     #[test]
@@ -543,13 +544,13 @@ mod tests {
         // Push some bytes
         let (mut reader, mut writer) = my_hdu.split();
         // Writing 5 bytes will EOD as it's less than the buffer size
-        let bytes = [0i8, 2i8, 3i8, 4i8, 5i8];
+        let bytes = [0u8, 2u8, 3u8, 4u8, 5u8];
         writer.push(&bytes).unwrap();
         let page = reader.next().unwrap().unwrap();
         assert_eq!(bytes, page);
         assert_eq!(None, reader.next());
         // The None reset the buffer
-        let bytes_next = [42i8, 124i8];
+        let bytes_next = [42u8, 124u8];
         writer.push(&bytes_next).unwrap();
         let page = reader.next().unwrap().unwrap();
         assert_eq!(bytes_next, page);
