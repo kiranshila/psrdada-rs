@@ -1,13 +1,17 @@
+use std::collections::HashMap;
+
 use logging::create_stderr_log;
 use utils::PsrdadaError;
 mod logging;
 mod utils;
 use crate::utils::*;
+use itertools::Itertools;
+use lending_iterator::prelude::*;
 use psrdada_sys::*;
 
 #[derive(Debug)]
-pub struct DadaDBBuilder<'key> {
-    key: &'key DadaKey,
+pub struct DadaDBBuilder {
+    key: i32,
     log_name: String,
     // Default things from Psrdada
     num_bufs: Option<u64>,
@@ -16,19 +20,30 @@ pub struct DadaDBBuilder<'key> {
     header_size: Option<u64>,
 }
 
-#[derive(Debug)]
-pub struct DadaDB<'key> {
-    key: &'key DadaKey,
+#[derive(Debug, Clone)]
+pub struct DadaDB {
+    key: i32,
     hdu: *mut dada_hdu,
     // Buffer metadata
-    num_bufs: u64,
     buf_size: u64,
-    num_headers: u64,
     header_size: u64,
+    // Track whether *we* allocated the memory
+    allocated: bool,
 }
 
-impl<'key> DadaDBBuilder<'key> {
-    pub fn new(key: &'key DadaKey, log_name: &str) -> Self {
+#[derive(Debug)]
+pub struct ReadHalf<'db> {
+    parent: &'db DadaDB,
+    holding_page: bool,
+}
+
+#[derive(Debug)]
+pub struct WriteHalf<'db> {
+    parent: &'db DadaDB,
+}
+
+impl DadaDBBuilder {
+    pub fn new(key: i32, log_name: &str) -> Self {
         Self {
             key,
             log_name: log_name.to_string(),
@@ -62,8 +77,10 @@ impl<'key> DadaDBBuilder<'key> {
     /// Builder for DadaDB
     /// Buffer size will default to 4x of 128*Page Size
     /// Header size will default to 8x of Page Size
-    pub fn build(self) -> PsrdadaResult<DadaDB<'key>> {
+    /// `lock` - locks the shared memory in RAM
+    pub fn build(self, lock: bool) -> PsrdadaResult<DadaDB> {
         // Unpack the things we need, defaulting as necessary
+        let key = self.key;
         let log_name = &self.log_name;
         let num_bufs = self.num_bufs.unwrap_or(4);
         let buf_size = self.buf_size.unwrap_or((page_size::get() as u64) * 128);
@@ -74,7 +91,7 @@ impl<'key> DadaDBBuilder<'key> {
         let mut data = Default::default();
         unsafe {
             // Safety: Catch the error
-            if ipcbuf_create(&mut data, self.key.0, num_bufs, buf_size, 1) != 0 {
+            if ipcbuf_create(&mut data, self.key, num_bufs, buf_size, 1) != 0 {
                 return Err(PsrdadaError::HDUInitError);
             }
         }
@@ -83,7 +100,7 @@ impl<'key> DadaDBBuilder<'key> {
         let mut header = Default::default();
         unsafe {
             // Safety: Catch the Error, destroy data if we fail so we don't leak memory
-            if ipcbuf_create(&mut header, self.key.0 + 1, num_headers, header_size, 1) != 0 {
+            if ipcbuf_create(&mut header, self.key + 1, num_headers, header_size, 1) != 0 {
                 // We're kinda SOL if this happens
                 if ipcbuf_destroy(&mut data) != 0 {
                     return Err(PsrdadaError::HDUDestroyError);
@@ -92,8 +109,33 @@ impl<'key> DadaDBBuilder<'key> {
             }
         }
 
+        // Lock if required, teardown everything if we fail
+        if lock {
+            unsafe {
+                if ipcbuf_lock(&mut data) != 0 {
+                    if ipcbuf_destroy(&mut data) != 0 {
+                        return Err(PsrdadaError::HDUDestroyError);
+                    }
+                    if ipcbuf_destroy(&mut header) != 0 {
+                        return Err(PsrdadaError::HDUDestroyError);
+                    }
+                    return Err(PsrdadaError::HDUShmemLockError);
+                }
+
+                if ipcbuf_lock(&mut header) != 0 {
+                    if ipcbuf_destroy(&mut data) != 0 {
+                        return Err(PsrdadaError::HDUDestroyError);
+                    }
+                    if ipcbuf_destroy(&mut header) != 0 {
+                        return Err(PsrdadaError::HDUDestroyError);
+                    }
+                    return Err(PsrdadaError::HDUShmemLockError);
+                }
+            }
+        }
+
         // Now we "connect" to these buffers we created
-        let hdu = connect_hdu(self.key.0, &log_name).map_err(|_| {
+        let hdu = connect_hdu(self.key, log_name).map_err(|_| {
             // Clear the memory we allocated
             unsafe {
                 // Safety: header and data exist as initialzed above
@@ -109,12 +151,11 @@ impl<'key> DadaDBBuilder<'key> {
 
         // Return built result
         Ok(DadaDB {
-            key: self.key,
+            key,
             hdu,
-            num_bufs,
             buf_size,
-            num_headers,
             header_size,
+            allocated: true,
         })
     }
 }
@@ -138,7 +179,7 @@ fn connect_hdu(key: i32, log_name: &str) -> PsrdadaResult<*mut dada_hdu_t> {
     }
 }
 
-impl<'key> Drop for DadaDB<'key> {
+impl Drop for DadaDB {
     fn drop(&mut self) {
         unsafe {
             // Safety: self.hdu is a C raw ptr that is valid because we managed it during construction
@@ -146,78 +187,254 @@ impl<'key> Drop for DadaDB<'key> {
                 dada_hdu_disconnect(self.hdu),
                 0,
                 "HDU Disconnect musn't fail"
-            )
+            );
+            if self.allocated {
+                destroy_from_key(self.key).unwrap();
+                destroy_from_key(self.key + 1).unwrap();
+            }
         }
     }
 }
 
-impl<'key> DadaDB<'key> {
+impl DadaDB {
     /// Create a DadaDB by connecting to a preexisting data + header pair
-    pub fn connect(key: &'key DadaKey, log_name: &str) -> PsrdadaResult<Self> {
-        let hdu = connect_hdu(key.0, log_name)?;
+    pub fn connect(key: i32, log_name: &str) -> PsrdadaResult<Self> {
+        let hdu = connect_hdu(key, log_name)?;
         unsafe {
             let header = (*hdu).header_block;
             let mut data = (*(*hdu).data_block).buf;
             Ok(Self {
                 key,
                 hdu,
-                num_bufs: ipcbuf_get_nbufs(&mut data),
                 buf_size: ipcbuf_get_bufsz(&mut data),
-                num_headers: ipcbuf_get_nbufs(header),
                 header_size: ipcbuf_get_bufsz(header),
+                allocated: false,
             })
         }
     }
 
-    /// Blocking next returns immutable slice of data buffer
-    /// This is unsafe because we have no way to garuntee the data this returns is always valid.
-    /// It is valid following this call, but for further safety garuntees, you need to memcpy
-    pub fn next<const N: usize>(&self) -> PsrdadaResult<[i8; N]> {
-        assert_eq!(
-            N, self.buf_size as usize,
-            "Container must match the buffer size"
-        );
-        let mut out_buf = [0i8; N];
-        unsafe {
-            // Lock the reader
-            dada_hdu_lock_read(self.hdu);
-            // Safety: HDU is valid for the lifetime of Self, we're checking NULL explicitly
-            let data_ptr = ipcbuf_get_next_read(
-                &mut (*(*self.hdu).data_block).buf,
-                &mut (N as u64) as *mut u64,
-            );
-            // Check against null
-            if data_ptr == 0 as *mut i8 {
-                return Err(PsrdadaError::HDUReadError);
-            }
-            // Perform the memcpy
-            let raw_slice = std::slice::from_raw_parts(data_ptr, N as usize);
-            out_buf.clone_from_slice(raw_slice);
-            // Unlock the reader
-            dada_hdu_unlock_read(self.hdu);
-        }
-        Ok(out_buf)
+    /// Splits the DadaDB into the read and write pairs
+    pub fn split(&self) -> (ReadHalf, WriteHalf) {
+        (
+            ReadHalf {
+                parent: self,
+                holding_page: false,
+            },
+            WriteHalf { parent: self },
+        )
     }
+}
 
-    /// Push data onto the data ring buffer
-    pub fn push(&self, data: &[i8]) -> PsrdadaResult<()> {
-        let len = self.buf_size;
+impl<'db> WriteHalf<'db> {
+    /// Push data onto the current page of the data ring buffer
+    pub fn push(&mut self, data: &[i8]) -> PsrdadaResult<()> {
+        // Interestingly, PSRDada doesn't complain if we try to push more data than the buffer is sized
+        assert!(data.len() as u64 <= self.parent.buf_size);
         unsafe {
             // Safety: HDU is valid for the lifetime of Self, we're checking NULL explicitly
             // Lock the writer
-            dada_hdu_lock_write(self.hdu);
-            let data_ptr = ipcbuf_get_next_write(&mut (*(*self.hdu).data_block).buf);
+            if dada_hdu_lock_write(self.parent.hdu) != 0 {
+                return Err(PsrdadaError::HDULockingError);
+            }
+            let mut data_buf = (*(*self.parent.hdu).data_block).buf;
+            // Read the next ptr
+            let data_ptr = ipcbuf_get_next_write(&mut data_buf);
             // Check against null
-            if data_ptr == 0 as *mut i8 {
-                return Err(PsrdadaError::HDUReadError);
+            if data_ptr.is_null() {
+                return Err(PsrdadaError::HDUWriteError);
             }
             // Perform the memcpy
-            let slice = std::slice::from_raw_parts_mut(data_ptr, len as usize);
+            let slice = std::slice::from_raw_parts_mut(data_ptr, data.len() as usize);
             slice.clone_from_slice(data);
+            // Tell PSRDada we're done
+            if ipcbuf_mark_filled(&mut data_buf, data.len() as u64) != 0 {
+                return Err(PsrdadaError::HDUWriteError);
+            }
             // Unlock the writer
-            dada_hdu_unlock_write(self.hdu);
+            if dada_hdu_unlock_write(self.parent.hdu) != 0 {
+                return Err(PsrdadaError::HDULockingError);
+            }
         }
         Ok(())
+    }
+
+    /// Clear all the state of the writer
+    pub fn reset(&mut self) -> PsrdadaResult<()> {
+        unsafe {
+            // Safety: HDU is valid for the lifetime of Self, we're checking NULL explicitly
+            // Lock the writer
+            if dada_hdu_lock_write(self.parent.hdu) != 0 {
+                return Err(PsrdadaError::HDULockingError);
+            }
+            let mut data_buf = (*(*self.parent.hdu).data_block).buf;
+            // Reset
+            if ipcbuf_reset(&mut data_buf) != 0 {
+                return Err(PsrdadaError::HDUEODError);
+            }
+            // Unlock the writer
+            if dada_hdu_unlock_write(self.parent.hdu) != 0 {
+                return Err(PsrdadaError::HDULockingError);
+            }
+        }
+        Ok(())
+    }
+}
+
+#[gat]
+impl<'db> LendingIterator for ReadHalf<'db> {
+    type Item<'next> = PsrdadaResult<&'next [i8]>
+    where
+        Self: 'next;
+    fn next(&'_ mut self) -> Option<Self::Item<'_>> {
+        unsafe {
+            // Lock the reader
+            if dada_hdu_lock_read(self.parent.hdu) != 0 {
+                return Some(Err(PsrdadaError::HDULockingError));
+            }
+            let mut data_buf = (*(*self.parent.hdu).data_block).buf;
+            // If we had data already, clear the previous page
+            if self.holding_page {
+                if ipcbuf_mark_cleared(&mut data_buf) != 0 {
+                    return Some(Err(PsrdadaError::HDUReadError));
+                }
+                self.holding_page = false;
+            }
+            // Check if we're EOD
+            if ipcbuf_eod(&mut data_buf) == 1 {
+                if ipcbuf_reset(&mut data_buf) != 0 {
+                    return Some(Err(PsrdadaError::HDUResetError));
+                }
+                // Make sure we unlock before we return (I think)
+                if dada_hdu_unlock_read(self.parent.hdu) != 0 {
+                    return Some(Err(PsrdadaError::HDULockingError));
+                }
+                None
+            } else {
+                // If not, grab the next stuff
+                let mut bytes_available = 0u64;
+                // Safety: HDU is valid for the lifetime of Self, we're checking NULL explicitly
+                let data_ptr = ipcbuf_get_next_read(&mut data_buf, &mut bytes_available);
+                // Check against null
+                if data_ptr.is_null() {
+                    return Some(Err(PsrdadaError::HDUReadError));
+                }
+                self.holding_page = true;
+                // Construct our lifetime tracked thing
+                let raw_slice = std::slice::from_raw_parts(data_ptr, bytes_available as usize);
+                // Unlock the reader
+                if dada_hdu_unlock_read(self.parent.hdu) != 0 {
+                    return Some(Err(PsrdadaError::HDULockingError));
+                }
+                Some(Ok(raw_slice))
+            }
+        }
+    }
+}
+
+// Headers
+
+impl<'db> WriteHalf<'db> {
+    /// Push a `header` map onto the ring buffer
+    /// Blocking, this will wait until there is a header page available
+    pub fn push_header(&self, header: &HashMap<&str, &str>) -> PsrdadaResult<()> {
+        unsafe {
+            // Lock the writer
+            if dada_hdu_lock_write(self.parent.hdu) != 0 {
+                return Err(PsrdadaError::HDULockingError);
+            }
+            let header_buf = (*self.parent.hdu).header_block;
+            // Read the next ptr
+            let header_ptr = ipcbuf_get_next_write(header_buf);
+            // Check against null
+            if header_ptr.is_null() {
+                return Err(PsrdadaError::HDUWriteError);
+            }
+            // Grab the region we'll "print" into
+            let slice = std::slice::from_raw_parts_mut(
+                header_ptr as *mut u8,
+                self.parent.header_size as usize,
+            );
+            let header_str: String = Itertools::intersperse(
+                header.iter().map(|(k, v)| format!("{} {}", k, v)),
+                "\n".to_owned(),
+            )
+            .collect();
+            let header_bytes = header_str.into_bytes();
+            if header_bytes.len() > slice.len() {
+                return Err(PsrdadaError::HeaderOverflow);
+            }
+            // Memcpy
+            slice[0..header_bytes.len()].clone_from_slice(&header_bytes);
+            // Tell PSRDada we're done
+            if ipcbuf_mark_filled(header_buf, header_bytes.len() as u64) != 0 {
+                return Err(PsrdadaError::HDUWriteError);
+            }
+            // Unlock the writer
+            if dada_hdu_unlock_write(self.parent.hdu) != 0 {
+                return Err(PsrdadaError::HDULockingError);
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'db> ReadHalf<'db> {
+    /// Blocking read the next header from the buffer and return as a hashmap
+    /// Each pair is separated by whitespace (tab or space) and pairs are separated with newlines
+    pub fn next_header(&self) -> PsrdadaResult<HashMap<String, String>> {
+        unsafe {
+            // Lock the reader
+            if dada_hdu_lock_read(self.parent.hdu) != 0 {
+                return Err(PsrdadaError::HDULockingError);
+            }
+
+            let header_buf = (*self.parent.hdu).header_block;
+            let mut bytes_available = 0u64;
+            let header_ptr = ipcbuf_get_next_read(header_buf, &mut bytes_available);
+            // Check if we got nothing
+            if bytes_available == 0 {
+                if ipcbuf_mark_cleared(header_buf) != 0 {
+                    return Err(PsrdadaError::HDUReadError);
+                }
+                if ipcbuf_eod(header_buf) == 1 {
+                    if ipcbuf_reset(header_buf) != 0 {
+                        return Err(PsrdadaError::HDUResetError);
+                    }
+                }
+            }
+            // Grab the header
+            let header_str = std::str::from_utf8(std::slice::from_raw_parts(
+                header_ptr as *const u8,
+                bytes_available as usize,
+            ))
+            .map_err(|_| PsrdadaError::UTF8Error)?;
+            let dict = match header_str
+                .lines()
+                .map(|s| {
+                    let mut split = s.split_ascii_whitespace();
+                    let key = split.next().to_owned();
+                    let value = split.next().to_owned();
+                    if let Some(key) = key {
+                        if let Some(value) = value {
+                            Some((key.to_owned(), value.to_owned()))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+            {
+                Some(d) => d,
+                None => return Err(PsrdadaError::UTF8Error),
+            };
+            // Mark as read
+            if ipcbuf_mark_cleared(header_buf) != 0 {
+                return Err(PsrdadaError::HDUReadError);
+            }
+            Ok(dict)
+        }
     }
 }
 
@@ -227,62 +444,146 @@ mod tests {
 
     #[test]
     fn test_construct_hdu() {
-        let key = DadaKey(0xdead);
-        let _my_hdu = DadaDBBuilder::new(&key, "test").build().unwrap();
+        let key = 2;
+        let _my_hdu = DadaDBBuilder::new(key, "test").build(false).unwrap();
     }
 
     #[test]
     fn test_connect_hdu() {
-        let key = DadaKey(0xbeef);
-        let _my_hdu = DadaDBBuilder::new(&key, "An HDU log").build().unwrap();
-        let _my_connected_hdu = DadaDB::connect(&key, "Another HDU log").unwrap();
+        let key = 4;
+        let _my_hdu = DadaDBBuilder::new(key, "An HDU log").build(false).unwrap();
+        let _my_connected_hdu = DadaDB::connect(key, "Another HDU log").unwrap();
     }
 
     #[test]
     fn test_sizing() {
-        let key = DadaKey(0x4242);
-        let my_hdu = DadaDBBuilder::new(&key, "An HDU log")
+        let key = 6;
+        let my_hdu = DadaDBBuilder::new(key, "An HDU log")
             .num_bufs(1)
             .buf_size(128)
             .num_headers(4)
             .header_size(64)
-            .build()
+            .build(false)
             .unwrap();
         assert_eq!(my_hdu.buf_size, 128);
-        assert_eq!(my_hdu.num_bufs, 1);
         assert_eq!(my_hdu.header_size, 64);
-        assert_eq!(my_hdu.num_headers, 4);
     }
 
     #[test]
     fn test_read_write() {
-        let key = DadaKey(0x1234);
-        let my_hdu = DadaDBBuilder::new(&key, "read_write")
+        let key = 8;
+        let my_hdu = DadaDBBuilder::new(key, "read_write")
             .buf_size(5)
-            .build()
+            .build(false)
             .unwrap();
         // Push some bytes
+        let (mut reader, mut writer) = my_hdu.split();
         let bytes = [0i8, 2i8, 3i8, 4i8, 5i8];
-        my_hdu.push(&bytes).unwrap();
-        assert_eq!(my_hdu.next().unwrap(), bytes);
+        writer.push(&bytes).unwrap();
+        let page = reader.next().unwrap().unwrap();
+        assert_eq!(bytes, page);
+    }
+
+    #[test]
+    fn test_multi_read_write() {
+        let key = 10;
+        let my_hdu = DadaDBBuilder::new(key, "read_write")
+            .buf_size(4)
+            .build(false)
+            .unwrap();
+        let (mut reader, mut writer) = my_hdu.split();
+        // Push some bytes
+        let bytes = [0i8, 2i8, 3i8, 4i8];
+        writer.push(&bytes).unwrap();
+        let bytes_two = [10i8, 11i8, 12i8, 13i8];
+        writer.push(&bytes_two).unwrap();
+        // Use an explicit scope so Rust knows the borrow is valid
+        let first_page = reader.next().unwrap().unwrap();
+        assert_eq!(bytes, first_page);
+        let second_page = reader.next().unwrap().unwrap();
+        assert_eq!(bytes_two, second_page);
     }
 
     #[test]
     fn test_multithread_read_write() {
-        let key = DadaKey(0x0101);
-        let my_hdu = DadaDBBuilder::new(&key, "read_write")
-            .buf_size(5)
-            .build()
-            .unwrap();
+        let key = 12;
+        let my_hdu = DadaDBBuilder::new(key, "read_write").build(false).unwrap();
+        let (_, mut writer) = my_hdu.split();
         // Push some bytes
         let bytes = [0i8, 2i8, 3i8, 4i8, 5i8];
-        my_hdu.push(&bytes).unwrap();
+        writer.push(&bytes).unwrap();
         // Spawn the thread, but wait for the read to finish before destroying
-        std::thread::scope(|s| {
-            s.spawn(|| {
-                let my_connected_hdu = DadaDB::connect(&key, "Another HDU log").unwrap();
-                assert_eq!(my_connected_hdu.next().unwrap(), [0i8, 2i8, 3i8, 4i8, 5i8]);
-            });
-        });
+        std::thread::spawn(move || {
+            let my_hdu = DadaDB::connect(key, "Another HDU log").unwrap();
+            let mut reader = my_hdu.split().0;
+            let page = reader.next().unwrap().unwrap();
+            assert_eq!(bytes, page);
+        })
+        .join()
+        .unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_too_much_data() {
+        let key = 14;
+        let my_hdu = DadaDBBuilder::new(key, "read_write")
+            .buf_size(2) // Limit buffer to 2
+            .build(false)
+            .unwrap();
+        let (mut reader, mut writer) = my_hdu.split();
+        writer.push(&[0i8; 3]).unwrap();
+        let page = reader.next().unwrap().unwrap();
+        assert_eq!([0i8; 3], page);
+    }
+
+    #[test]
+    fn test_eod_and_reset() {
+        let key = 16;
+        let my_hdu = DadaDBBuilder::new(key, "test").build(false).unwrap();
+        // Push some bytes
+        let (mut reader, mut writer) = my_hdu.split();
+        // Writing 5 bytes will EOD as it's less than the buffer size
+        let bytes = [0i8, 2i8, 3i8, 4i8, 5i8];
+        writer.push(&bytes).unwrap();
+        let page = reader.next().unwrap().unwrap();
+        assert_eq!(bytes, page);
+        assert_eq!(None, reader.next());
+        // The None reset the buffer
+        let bytes_next = [42i8, 124i8];
+        writer.push(&bytes_next).unwrap();
+        let page = reader.next().unwrap().unwrap();
+        assert_eq!(bytes_next, page);
+    }
+
+    #[test]
+    fn test_sizing_shmem() {
+        let key = 18;
+        let my_hdu = DadaDBBuilder::new(key, "An HDU log")
+            .num_bufs(1)
+            .buf_size(128)
+            .num_headers(4)
+            .header_size(64)
+            .build(true)
+            .unwrap();
+        assert_eq!(my_hdu.buf_size, 128);
+        assert_eq!(my_hdu.header_size, 64);
+    }
+
+    #[test]
+    fn test_read_write_header() {
+        let key = 20;
+        let my_hdu = DadaDBBuilder::new(key, "test").build(false).unwrap();
+        let header = HashMap::from([
+            ("START_FREQ", "1530"),
+            ("STOP_FREQ", "1280"),
+            ("TSAMP", "8.193e-6"),
+        ]);
+        let (reader, writer) = my_hdu.split();
+        writer.push_header(&header).unwrap();
+        let header_read = reader.next_header().unwrap();
+        for (k, v) in header_read.into_iter() {
+            assert_eq!(header.get(&k.as_str()).unwrap(), &v.as_str());
+        }
     }
 }

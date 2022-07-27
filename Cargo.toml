@@ -7,3 +7,13 @@ edition = "2021"
 psrdada-sys = {path = "./psrdada-sys"}
 page_size = "0.4"
 tracing = "0.1"
+lending-iterator = "0.1"
+itertools = "0.10"
+
+[dev-dependencies]
+iai = "0.1"
+rand = "0.8"
+
+[[bench]]
+name = "benchmark"
+harness = false
