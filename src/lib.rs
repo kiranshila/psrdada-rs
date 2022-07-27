@@ -282,9 +282,8 @@ impl<'db> WriteHalf<'db> {
 
 #[gat]
 impl<'db> LendingIterator for ReadHalf<'db> {
-    type Item<'next> = PsrdadaResult<&'next [i8]>
-    where
-        Self: 'next;
+    type Item<'next> = PsrdadaResult<&'next [i8]>;
+
     fn next(&'_ mut self) -> Option<Self::Item<'_>> {
         unsafe {
             // Lock the reader
