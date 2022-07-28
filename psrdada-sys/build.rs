@@ -35,11 +35,22 @@ fn main() {
 
     c.warnings(false);
 
+    // Use CUDA - can we gate this here to hardware?
+    c.cuda(true)
+        .flag("-cudart=shared")
+        .flag("-allow-unsupported-compiler")
+        .flag("-gencode")
+        .flag("arch=compute_61,code=sm_61");
+
+    println!("cargo:rustc-link-search=native=/usr/local/cuda/lib64");
+    println!("cargo:rustc-link-lib=cudart");
+
     let mut config_h = fs::File::create(config_dir.join("config.h")).unwrap();
     // Are these all decent assumptions to make?
     write!(
         config_h,
         r#"
+        #define HAVE_CUDA 1
         #define HAVE_ALARM 1
         #define HAVE_ARPA_INET_H 1
         #define HAVE_DLFCN_H 1
@@ -138,6 +149,12 @@ fn main() {
         .file("vendor/src/string_array.c")
         .file("vendor/src/stopwatch.c")
         .file("vendor/src/tmutil.c")
+        // CUDA Files
+        .file("vendor/src/dada_cuda.cu")
+        .file("vendor/src/ipcbuf_cuda.cu")
+        .file("vendor/src/ipcio_cuda.cu")
+        .file("vendor/src/ipcutil_cuda.cu")
+        // Compile
         .compile("psrdada");
 
     // Tell cargo to invalidate the built crate whenever the wrapper changes
