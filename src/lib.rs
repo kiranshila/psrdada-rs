@@ -336,7 +336,7 @@ impl<'db> LendingIterator for ReadHalf<'db> {
 impl<'db> WriteHalf<'db> {
     /// Push a `header` map onto the ring buffer
     /// Blocking, this will wait until there is a header page available
-    pub fn push_header(&self, header: &HashMap<&str, &str>) -> PsrdadaResult<()> {
+    pub fn push_header(&self, header: &HashMap<String, String>) -> PsrdadaResult<()> {
         unsafe {
             // Lock the writer
             if dada_hdu_lock_write(self.parent.hdu) != 0 {
@@ -575,15 +575,15 @@ mod tests {
         let key = 20;
         let my_hdu = DadaDBBuilder::new(key, "test").build(false).unwrap();
         let header = HashMap::from([
-            ("START_FREQ", "1530"),
-            ("STOP_FREQ", "1280"),
-            ("TSAMP", "8.193e-6"),
+            ("START_FREQ".to_owned(), "1530".to_owned()),
+            ("STOP_FREQ".to_owned(), "1280".to_owned()),
+            ("TSAMP".to_owned(), "8.193e-6".to_owned()),
         ]);
         let (reader, writer) = my_hdu.split();
         writer.push_header(&header).unwrap();
         let header_read = reader.next_header().unwrap();
         for (k, v) in header_read.into_iter() {
-            assert_eq!(header.get(&k.as_str()).unwrap(), &v.as_str());
+            assert_eq!(&header.get(&k).unwrap(), &v.as_str());
         }
     }
 }
