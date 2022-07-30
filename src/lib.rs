@@ -2,7 +2,6 @@ mod builder;
 mod client;
 mod errors;
 mod io;
-mod logging;
 #[cfg(test)]
 mod tests;
 

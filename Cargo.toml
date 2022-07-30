@@ -7,17 +7,10 @@ edition = "2021"
 psrdada-sys = {path = "./psrdada-sys"}
 page_size = "0.4"
 tracing = "0.1"
-itertools = "0.10"
 lending-iterator = "0.1"
 
 [dev-dependencies]
-iai = "0.1"
-rand = "0.8"
 test-log = { version = "0.2", features = ["trace"] }
 env_logger = "*"
 tracing = { version = "0.1", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt"] }
-
-[[bench]]
-name = "benchmark"
-harness = false
