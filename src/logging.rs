@@ -1,6 +1,6 @@
 use std::ffi::CString;
 
-use crate::utils::{PsrdadaError, PsrdadaResult};
+use crate::errors::{PsrdadaError, PsrdadaResult};
 use psrdada_sys::{
     multilog_add, multilog_open, multilog_t, FILE, LOG_ALERT, LOG_CRIT, LOG_DEBUG, LOG_EMERG,
     LOG_ERR, LOG_INFO, LOG_NOTICE, LOG_WARNING,

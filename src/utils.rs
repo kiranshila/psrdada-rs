@@ -4,6 +4,7 @@ use psrdada_sys::*;
 pub enum PsrdadaError {
     HDUInitError,
     HDUConnectError,
+    HDUDisconnectError,
     HDUDestroyError,
     HDULockingError,
     HDUReadError,
@@ -16,6 +17,7 @@ pub enum PsrdadaError {
     EODWrite,
     UTF8Error,
     HeaderOverflow,
+    GpuError,
 }
 
 pub(crate) type PsrdadaResult<T> = Result<T, PsrdadaError>;
