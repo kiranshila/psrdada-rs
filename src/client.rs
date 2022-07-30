@@ -1,4 +1,4 @@
-use std::{ffi::c_void};
+use std::ffi::c_void;
 
 use crate::errors::{PsrdadaError, PsrdadaResult};
 use psrdada_sys::*;
