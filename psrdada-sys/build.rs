@@ -6,9 +6,6 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 
-// We are going to build a barebones PSRDADA, I don't think we'll need CUDA,
-// Infiniband, Etc. but we can do that later if need be
-
 fn main() {
     // Build vendor library
     let mut c = cc::Build::new();
@@ -35,15 +32,15 @@ fn main() {
 
     c.warnings(false);
 
+    // Use pkg_config to find CUDA
+    let cuda = pkg_config::probe_library("cuda").unwrap();
+
     // Use CUDA - can we gate this here to hardware?
     c.cuda(true)
         .flag("-cudart=static")
         .flag("-allow-unsupported-compiler")
         .flag("-gencode")
-        .flag("arch=compute_61,code=sm_61");
-
-    println!("cargo:rustc-link-search=native=/opt/cuda/lib64");
-    println!("cargo:rustc-link-lib=cudart");
+        .flag("arch=compute_50,code=sm_50");
 
     let mut config_h = fs::File::create(config_dir.join("config.h")).unwrap();
     // Are these all decent assumptions to make?
@@ -115,6 +112,8 @@ fn main() {
         "#,
     )
     .unwrap();
+
+    // All the source files
     c.include("vendor/src")
         .file("vendor/src/ascii_header.c")
         .file("vendor/src/command_parse.c")
@@ -172,6 +171,12 @@ fn main() {
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         // Tell bindgen about the structs which have mutexes, so they don't `copy`
         .no_copy("multilog_t")
+        // Tell clang where to look for CUDA headers
+        .clang_args(
+            cuda.include_paths
+                .into_iter()
+                .map(|p| format!("-I{}", p.display())),
+        )
         // Finish the builder and generate the bindings.
         .generate()
         // Unwrap the Result and panic on failure.

@@ -1,11 +1,12 @@
 [package]
 name = "psrdada-sys"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2021"
 links = "psrdada"
 
 [build-dependencies]
-bindgen = "0.60.1"
+bindgen = "0.60"
+pkg-config = "0.3"
 cc = { version = "1.0", features = ["parallel"] }
 
 [dev-dependencies]
