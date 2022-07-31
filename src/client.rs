@@ -1,4 +1,4 @@
-use std::{ffi::c_void};
+use std::ffi::c_void;
 
 use crate::errors::{PsrdadaError, PsrdadaResult};
 use psrdada_sys::*;
@@ -12,8 +12,32 @@ pub struct DadaClient {
     pub(crate) header_buf: *mut ipcbuf_t,
 }
 
-impl DadaClient {
+/// Client for working with the header ringbuffer
+pub struct HeaderClient<'a> {
+    pub(crate) buf: &'a *mut ipcbuf_t,
+}
 
+/// Client for working with the data ringbuffer
+pub struct DataClient<'a> {
+    pub(crate) buf: &'a *mut ipcbuf_t,
+}
+
+// Splitting borrows
+impl DadaClient {
+    /// Split the DadaClient into header and data clients
+    pub fn split(&mut self) -> (HeaderClient, DataClient) {
+        (
+            HeaderClient {
+                buf: &self.header_buf,
+            },
+            DataClient {
+                buf: &self.data_buf,
+            },
+        )
+    }
+}
+
+impl DadaClient {
     #[tracing::instrument]
     /// Internal method used by builder (we know we allocated it)
     pub(crate) fn build(data_buf: *mut ipcbuf_t, header_buf: *mut ipcbuf_t) -> PsrdadaResult<Self> {
@@ -22,7 +46,7 @@ impl DadaClient {
             header_buf,
             allocated: true,
         };
-        s.cuda_register()?;
+        // Clear our state, just to make sure
         s.reset()?;
         Ok(s)
     }
@@ -31,13 +55,13 @@ impl DadaClient {
     /// Construct a new DadaClient and connect to existing ring buffers
     pub fn new(key: i32) -> PsrdadaResult<Self> {
         let (data_buf, header_buf) = Self::connect(key)?;
-        let mut s = Self {
+        let s = Self {
             data_buf,
             header_buf,
             allocated: false,
         };
+        // Pin memory as CUDA memory (if it is actually CUDA memory)
         s.cuda_register()?;
-        s.reset()?;
         Ok(s)
     }
 

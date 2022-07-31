@@ -1,19 +1,9 @@
 //! This module contains the safe implementation of low-level reading and writing from psrdada ringbuffers
 
-use crate::client::DadaClient;
+use crate::client::{DadaClient, DataClient, HeaderClient};
 use lending_iterator::{gat, prelude::*, LendingIterator};
 use psrdada_sys::*;
 use tracing::{debug, error};
-
-/// Client for working with the header ringbuffer
-pub struct HeaderClient<'a> {
-    buf: &'a *mut ipcbuf_t,
-}
-
-/// Client for working with the data ringbuffer
-pub struct DataClient<'a> {
-    buf: &'a *mut ipcbuf_t,
-}
 
 /// The writer associated with a ringbuffer
 pub struct WriteHalf<'a> {
@@ -26,24 +16,9 @@ pub struct ReadHalf<'a> {
     done: bool,
 }
 
-// Splitting borrows
-impl DadaClient {
-    /// Split the DadaClient into header and data clients
-    pub fn split(&mut self) -> (HeaderClient, DataClient) {
-        (
-            HeaderClient {
-                buf: &self.header_buf,
-            },
-            DataClient {
-                buf: &self.data_buf,
-            },
-        )
-    }
-}
-
 impl DataClient<'_> {
     /// Get a reader for this DataClient. This is mutually exclusive with `writer`
-    fn reader(&mut self) -> ReadHalf {
+    pub fn reader(&mut self) -> ReadHalf {
         ReadHalf {
             buf: self.buf,
             done: false,
@@ -51,14 +26,14 @@ impl DataClient<'_> {
     }
 
     /// Get a writer for this DataClient. This is mutually exclusive with `reader`
-    fn writer(&mut self) -> WriteHalf {
+    pub fn writer(&mut self) -> WriteHalf {
         WriteHalf { buf: self.buf }
     }
 }
 
 impl HeaderClient<'_> {
     /// Get a reader for this HeaderClient. This is mutually exclusive with `writer`
-    fn reader(&mut self) -> ReadHalf {
+    pub fn reader(&mut self) -> ReadHalf {
         ReadHalf {
             buf: self.buf,
             done: false,
@@ -66,7 +41,7 @@ impl HeaderClient<'_> {
     }
 
     /// Get a writer for this HeaderClient. This is mutually exclusive with `reader`
-    fn writer(&mut self) -> WriteHalf {
+    pub fn writer(&mut self) -> WriteHalf {
         WriteHalf { buf: self.buf }
     }
 }
@@ -275,6 +250,7 @@ mod tests {
     use std::io::Write;
 
     use crate::builder::DadaClientBuilder;
+    use crate::client::DadaClient;
     use crate::tests::next_key;
     use lending_iterator::LendingIterator;
     use test_log::test;
@@ -319,6 +295,33 @@ mod tests {
         // Read the bytes back
         let mut reader = dc.reader();
         assert_eq!(bytes, reader.next().unwrap().read_block());
+    }
+
+    #[test]
+    fn test_multithreaded_read_write() {
+        let key = next_key();
+        let mut client = DadaClientBuilder::new(key).buf_size(4).build().unwrap();
+
+        // Spawn a reader thread, which will block until the data shows up
+        let handle = std::thread::spawn(move || {
+            let mut client = DadaClient::new(key).unwrap();
+            let (_, mut dc) = client.split();
+            let mut reader = dc.reader();
+            assert_eq!([0u8, 1u8, 2u8, 3u8], reader.next().unwrap().read_block());
+        });
+
+        // Write on the main thread
+        let (_, mut dc) = client.split();
+        let bytes = [0u8, 1u8, 2u8, 3u8];
+        // Write
+        let mut writer = dc.writer();
+        let mut db = writer.next_write_block().unwrap();
+        assert_eq!(bytes.len(), db.write(&bytes).unwrap());
+        // Commit the memory to the ring buffer
+        db.commit();
+
+        // Join the thread
+        handle.join().unwrap()
     }
 
     #[test]
