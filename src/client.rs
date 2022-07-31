@@ -1,4 +1,4 @@
-use std::ffi::c_void;
+use std::{ffi::c_void};
 
 use crate::errors::{PsrdadaError, PsrdadaResult};
 use psrdada_sys::*;
@@ -13,6 +13,7 @@ pub struct DadaClient {
 }
 
 impl DadaClient {
+
     #[tracing::instrument]
     /// Internal method used by builder (we know we allocated it)
     pub(crate) fn build(data_buf: *mut ipcbuf_t, header_buf: *mut ipcbuf_t) -> PsrdadaResult<Self> {
@@ -124,7 +125,7 @@ impl DadaClient {
 
             // Lock each data buffer block as CUDA memory
             for buf_id in 0..nbufs {
-                let block = std::slice::from_raw_parts((*self.data_buf).buffer, nbufs)[buf_id];
+                let block = std::slice::from_raw_parts((*(self.data_buf)).buffer, nbufs)[buf_id];
                 // Check for cudaSuccess (0)
                 if cudaHostRegister(block as *mut c_void, bufsz as u64, 0) != 0 {
                     error!("Error registering GPU memory");

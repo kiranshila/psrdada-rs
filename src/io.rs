@@ -1,48 +1,74 @@
-//! This module contains the safe implementation of low-level reading and writing from ringbuffers
+//! This module contains the safe implementation of low-level reading and writing from psrdada ringbuffers
 
 use crate::client::DadaClient;
 use lending_iterator::{gat, prelude::*, LendingIterator};
 use psrdada_sys::*;
 use tracing::{debug, error};
 
-#[derive(Copy, Clone)]
-pub enum BlockType {
-    Data,
-    Header,
+pub struct HeaderClient<'a> {
+    buf: &'a *mut ipcbuf_t,
+}
+
+pub struct DataClient<'a> {
+    buf: &'a *mut ipcbuf_t,
 }
 
 pub struct WriteHalf<'a> {
-    client: &'a DadaClient,
-    ty: BlockType,
+    buf: &'a *mut ipcbuf_t,
 }
 
 pub struct ReadHalf<'a> {
-    client: &'a DadaClient,
-    ty: BlockType,
+    buf: &'a *mut ipcbuf_t,
     done: bool,
 }
 
+// Splitting borrows
 impl DadaClient {
-    /// Split the HduClient into the read and write halves
-    pub fn split(&mut self, ty: BlockType) -> (ReadHalf, WriteHalf) {
+    /// Split the DadaClient into header and data clients
+    pub fn split(&mut self) -> (HeaderClient, DataClient) {
         (
-            ReadHalf {
-                client: self,
-                done: false,
-                ty,
+            HeaderClient {
+                buf: &self.header_buf,
             },
-            WriteHalf { client: self, ty },
+            DataClient {
+                buf: &self.data_buf,
+            },
         )
+    }
+}
+
+impl DataClient<'_> {
+    fn reader(&mut self) -> ReadHalf {
+        ReadHalf {
+            buf: self.buf,
+            done: false,
+        }
+    }
+
+    fn writer(&mut self) -> WriteHalf {
+        WriteHalf { buf: self.buf }
+    }
+}
+
+impl HeaderClient<'_> {
+    fn reader(&mut self) -> ReadHalf {
+        ReadHalf {
+            buf: self.buf,
+            done: false,
+        }
+    }
+
+    fn writer(&mut self) -> WriteHalf {
+        WriteHalf { buf: self.buf }
     }
 }
 
 // If this struct exists, it's locked
 pub struct WriteBlock<'a> {
     bytes_written: usize,
-    buf: *mut ipcbuf_t,
+    buf: &'a *mut ipcbuf_t,
     ptr: *mut u8,
     eod: bool,
-    _marker: std::marker::PhantomData<&'a ipcbuf_t>,
 }
 
 impl WriteBlock<'_> {
@@ -62,21 +88,21 @@ impl Drop for WriteBlock<'_> {
         if self.eod {
             // This must happen before `mark_filled` (for some reason, this is undocumented)
             unsafe {
-                if ipcbuf_enable_eod(self.buf) != 0 {
+                if ipcbuf_enable_eod(*self.buf) != 0 {
                     error!("Error setting EOD");
                 }
             }
         }
         // Tell PSRDada how many bytes we've written
         unsafe {
-            if ipcbuf_mark_filled(self.buf, self.bytes_written as u64) != 0 {
+            if ipcbuf_mark_filled(*self.buf, self.bytes_written as u64) != 0 {
                 error!("Error closing data block");
             }
         }
         // Unlock
         debug!("Unlocking data ringbuffer");
         unsafe {
-            if ipcbuf_unlock_write(self.buf) != 0 {
+            if ipcbuf_unlock_write(*self.buf) != 0 {
                 error!("Error unlocking the write block");
             }
         }
@@ -87,14 +113,10 @@ impl WriteHalf<'_> {
     /// Grabs the next available block of data we can write
     /// Returns None if the client fell out from under us or getting a lock errored
     pub fn next_write_block(&mut self) -> Option<WriteBlock> {
-        let buf = match self.ty {
-            BlockType::Data => self.client.data_buf,
-            BlockType::Header => self.client.header_buf,
-        };
         // Get a lock
         debug!("Locking ringbuffer");
         unsafe {
-            if ipcbuf_lock_write(buf) != 0 {
+            if ipcbuf_lock_write(*self.buf) != 0 {
                 error!("Could not aquire a lock on the data ringbuffer");
                 return None;
             }
@@ -102,21 +124,20 @@ impl WriteHalf<'_> {
         // Grab the pointer to the next available writable memory
         debug!("Grabbing next block");
         unsafe {
-            let ptr = ipcbuf_get_next_write(buf) as *mut u8;
+            let ptr = ipcbuf_get_next_write(*self.buf) as *mut u8;
             if ptr.is_null() {
                 // AHHH
                 error!("Next data block returned NULL");
-                if ipcbuf_unlock_write(buf) != 0 {
+                if ipcbuf_unlock_write(*self.buf) != 0 {
                     error!("Error unlocking the write block");
                 }
                 return None;
             }
             Some(WriteBlock {
                 bytes_written: 0,
-                buf,
+                buf: self.buf,
                 eod: false,
                 ptr,
-                _marker: std::marker::PhantomData,
             })
         }
     }
@@ -125,7 +146,7 @@ impl WriteHalf<'_> {
 impl std::io::Write for WriteBlock<'_> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         unsafe {
-            let bufsz = ipcbuf_get_bufsz(self.buf) as usize;
+            let bufsz = ipcbuf_get_bufsz(*self.buf) as usize;
             if self.bytes_written + buf.len() > bufsz {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::Other,
@@ -150,18 +171,17 @@ impl std::io::Write for WriteBlock<'_> {
 }
 
 pub struct ReadBlock<'a> {
-    buf: *mut ipcbuf_t,
+    buf: &'a *mut ipcbuf_t,
     ptr: *const u8,
     bytes_read: usize,
     block_size: usize,
-    _marker: std::marker::PhantomData<&'a ipcbuf_t>,
 }
 
 impl Drop for ReadBlock<'_> {
     fn drop(&mut self) {
         unsafe {
             // Unlock the reader
-            if ipcbuf_unlock_read(self.buf) != 0 {
+            if ipcbuf_unlock_read(*self.buf) != 0 {
                 error!("Error unlocking block reader");
             }
         }
@@ -201,14 +221,9 @@ impl LendingIterator for ReadHalf<'_> {
         if self.done {
             return None;
         }
-        // Grab the right ptr
-        let buf = match self.ty {
-            BlockType::Data => self.client.data_buf,
-            BlockType::Header => self.client.header_buf,
-        };
         // Lock the reader
         unsafe {
-            if ipcbuf_lock_read(buf) != 0 {
+            if ipcbuf_lock_read(*self.buf) != 0 {
                 error!("Error locking data reader");
                 self.done = true;
                 return None;
@@ -218,29 +233,28 @@ impl LendingIterator for ReadHalf<'_> {
         let mut block_sz = 0u64;
         unsafe {
             // Hopefully this is an entire block
-            ptr = ipcbuf_get_next_read(buf, &mut block_sz) as *const u8;
+            ptr = ipcbuf_get_next_read(*self.buf, &mut block_sz) as *const u8;
             if ptr.is_null() {
                 error!("Next read ptr is null");
                 return None;
             }
             // Mark the block as cleared - I think we can do this here (even though we haven't really cleared it yet)
             // Because we're going to unlock the read after
-            if ipcbuf_mark_cleared(buf) != 0 {
+            if ipcbuf_mark_cleared(*self.buf) != 0 {
                 error!("Error marking data block as cleared");
             }
             // Check for EOD
             // This must happen between `mark_cleared` and `unlock_read`. No idea why.
-            if ipcbuf_eod(buf) == 1 {
+            if ipcbuf_eod(*self.buf) == 1 {
                 self.done = true;
             }
         }
         // Make the data element
         Some(ReadBlock {
-            buf,
+            buf: self.buf,
             ptr,
             bytes_read: 0,
             block_size: block_sz as usize,
-            _marker: std::marker::PhantomData,
         })
     }
 }
@@ -250,7 +264,6 @@ mod tests {
     use std::io::Write;
 
     use crate::builder::DadaClientBuilder;
-    use crate::io::BlockType;
     use crate::tests::next_key;
     use lending_iterator::LendingIterator;
     use test_log::test;
@@ -259,8 +272,9 @@ mod tests {
     fn test_write() {
         let key = next_key();
         let mut client = DadaClientBuilder::new(key).build().unwrap();
-        let (_, mut write) = client.split(BlockType::Data);
-        let mut db = write.next_write_block().unwrap();
+        let (_, mut dc) = client.split();
+        let mut writer = dc.writer();
+        let mut db = writer.next_write_block().unwrap();
         let amnt = db
             .write(&[0u8, 1u8, 2u8, 3u8])
             .expect("Writing shouldn't fail");
@@ -271,8 +285,9 @@ mod tests {
     fn test_bad_write() {
         let key = next_key();
         let mut client = DadaClientBuilder::new(key).buf_size(2).build().unwrap();
-        let (_, mut write) = client.split(BlockType::Data);
-        let mut db = write.next_write_block().unwrap();
+        let (_, mut dc) = client.split();
+        let mut writer = dc.writer();
+        let mut db = writer.next_write_block().unwrap();
         let _er = db
             .write(&[0u8, 1u8, 2u8, 3u8])
             .expect_err("Writing should fail");
@@ -282,29 +297,34 @@ mod tests {
     fn test_read_write() {
         let key = next_key();
         let mut client = DadaClientBuilder::new(key).buf_size(4).build().unwrap();
-        let (mut read, mut write) = client.split(BlockType::Data);
+        let (_, mut dc) = client.split();
         let bytes = [0u8, 1u8, 2u8, 3u8];
         // Write
-        let mut db = write.next_write_block().unwrap();
+        let mut writer = dc.writer();
+        let mut db = writer.next_write_block().unwrap();
         assert_eq!(bytes.len(), db.write(&bytes).unwrap());
         // Commit the memory to the ring buffer
         db.commit();
         // Read the bytes back
-        assert_eq!(bytes, read.next().unwrap().read_block());
+        let mut reader = dc.reader();
+        assert_eq!(bytes, reader.next().unwrap().read_block());
     }
 
     #[test]
     fn test_multi_read_write() {
         let key = next_key();
         let mut client = DadaClientBuilder::new(key).buf_size(8).build().unwrap();
-        let (mut read, mut write) = client.split(BlockType::Data);
+        let (_, mut dc) = client.split();
         let bytes = [0u8, 1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8];
-        let mut db = write.next_write_block().unwrap();
+        let mut writer = dc.writer();
+
+        let mut db = writer.next_write_block().unwrap();
         assert_eq!(4, db.write(&bytes[0..4]).unwrap());
         assert_eq!(4, db.write(&bytes[4..]).unwrap());
         db.commit();
         // Read the bytes back
-        assert_eq!(bytes, read.next().unwrap().read_block());
+        let mut reader = dc.reader();
+        assert_eq!(bytes, reader.next().unwrap().read_block());
     }
 
     #[test]
@@ -315,76 +335,104 @@ mod tests {
             .num_bufs(4)
             .build()
             .unwrap();
-        let (mut read, mut write) = client.split(BlockType::Data);
+        let (_, mut dc) = client.split();
+
+        let mut writer = dc.writer();
 
         // Fill the buffer
         let bytes = [0u8, 1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8];
-        let mut db = write.next_write_block().unwrap();
+        let mut db = writer.next_write_block().unwrap();
         assert_eq!(8, db.write(&bytes).unwrap());
         db.commit();
 
-        let mut db = write.next_write_block().unwrap();
+        let mut db = writer.next_write_block().unwrap();
         assert_eq!(8, db.write(&bytes).unwrap());
         db.commit();
 
-        let mut db = write.next_write_block().unwrap();
+        let mut db = writer.next_write_block().unwrap();
         assert_eq!(8, db.write(&bytes).unwrap());
         db.commit();
 
-        let mut db = write.next_write_block().unwrap();
+        let mut db = writer.next_write_block().unwrap();
         assert_eq!(8, db.write(&bytes).unwrap());
         db.commit();
 
         // Drain the buffer
-        assert_eq!(bytes, read.next().unwrap().read_block());
-        assert_eq!(bytes, read.next().unwrap().read_block());
-        assert_eq!(bytes, read.next().unwrap().read_block());
-        assert_eq!(bytes, read.next().unwrap().read_block());
+        let mut reader = dc.reader();
+        assert_eq!(bytes, reader.next().unwrap().read_block());
+        assert_eq!(bytes, reader.next().unwrap().read_block());
+        assert_eq!(bytes, reader.next().unwrap().read_block());
+        assert_eq!(bytes, reader.next().unwrap().read_block());
     }
 
     #[test]
     fn test_explicit_eod() {
         let key = next_key();
         let mut client = DadaClientBuilder::new(key).buf_size(8).build().unwrap();
-        let (mut read, mut write) = client.split(BlockType::Data);
+        let (_, mut dc) = client.split();
+
+        let mut writer = dc.writer();
 
         // Write full buffers twice, second one being eod
         let bytes = [0u8, 1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8];
-        let mut db = write.next_write_block().unwrap();
+        let mut db = writer.next_write_block().unwrap();
         assert_eq!(8, db.write(&bytes).unwrap());
         db.commit();
 
-        let mut db = write.next_write_block().unwrap();
+        let mut db = writer.next_write_block().unwrap();
         assert_eq!(8, db.write(&bytes).unwrap());
         db.eod();
         db.commit();
 
+        let mut reader = dc.reader();
+
         // Read twice, third read should be None
-        assert_eq!(bytes, read.next().unwrap().read_block());
-        assert_eq!(bytes, read.next().unwrap().read_block());
-        assert!(read.next().is_none());
+        assert_eq!(bytes, reader.next().unwrap().read_block());
+        assert_eq!(bytes, reader.next().unwrap().read_block());
+        assert!(reader.next().is_none());
     }
 
     #[test]
     fn test_implicit_eod() {
         let key = next_key();
         let mut client = DadaClientBuilder::new(key).buf_size(8).build().unwrap();
-        let (mut read, mut write) = client.split(BlockType::Data);
+        let (_, mut dc) = client.split();
+
+        let mut writer = dc.writer();
 
         // Write one full buffer, one less than full
         let bytes = [0u8, 1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8];
-        let mut db = write.next_write_block().unwrap();
+        let mut db = writer.next_write_block().unwrap();
         assert_eq!(8, db.write(&bytes).unwrap());
         db.commit();
 
         let bytes_fewer = [0u8, 1u8, 2u8, 3u8, 4u8, 5u8, 6u8];
-        let mut db = write.next_write_block().unwrap();
+        let mut db = writer.next_write_block().unwrap();
         assert_eq!(7, db.write(&bytes_fewer).unwrap());
         db.commit();
 
+        let mut reader = dc.reader();
+
         // Read twice, third read should be None
-        assert_eq!(bytes, read.next().unwrap().read_block());
-        assert_eq!(bytes_fewer, read.next().unwrap().read_block());
-        assert!(read.next().is_none());
+        assert_eq!(bytes, reader.next().unwrap().read_block());
+        assert_eq!(bytes_fewer, reader.next().unwrap().read_block());
+        assert!(reader.next().is_none());
+    }
+
+    #[test]
+    fn test_headers() {
+        let key = next_key();
+        let mut client = DadaClientBuilder::new(key).build().unwrap();
+        let (mut hc, _) = client.split();
+
+        let mut writer = hc.writer();
+
+        let bytes = [0u8; 128];
+        let mut hb = writer.next_write_block().unwrap();
+        assert_eq!(128, hb.write(&bytes).unwrap());
+        hb.commit();
+
+        let mut reader = hc.reader();
+        assert_eq!(bytes, reader.next().unwrap().read_block());
     }
 }

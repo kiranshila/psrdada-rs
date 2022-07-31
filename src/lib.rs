@@ -57,7 +57,7 @@
 mod builder;
 mod client;
 mod errors;
-mod highlevel;
+//mod highlevel;
 mod io;
 #[cfg(test)]
 mod tests;
