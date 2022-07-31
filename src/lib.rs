@@ -15,9 +15,14 @@
 //!
 //! The rust library [shmem-ipc](https://github.com/diwic/shmem-ipc) has excellent performance over shmem, usefull for large
 //! data transfers (like windows of spectal data). It creates shared ringbuffers, much like psrdada.
-//! Interfacing with D-Bus is fine for signalling and headers. If you *need* CUDA support, [NVSHMEM](https://developer.nvidia.com/nvshmem)
+//! Interfacing with D-Bus is fine for signalling and headers.
+//!
+//! If you *need* CUDA support, [NVSHMEM](https://developer.nvidia.com/nvshmem)
 //! is a thing that exists, and you should use it. Also, linux has [mkfifo](https://linux.die.net/man/3/mkfifo) which works fine with CUDA
 //! as discussed [here](https://forums.developer.nvidia.com/t/gpu-inter-process-communications-ipc-question/35936/12).
+//!
+//! Lastly, there is [ipc-channel](https://github.com/servo/ipc-channel), which uses the Rust channel API over OS-native IPC abstractions.
+//! It's a really nice library.
 //!
 //! In short, if you are constructing a pipeline from scratch, don't use psrdada.
 //! There are more mature, documented, more performant alternatives.
@@ -52,6 +57,7 @@
 mod builder;
 mod client;
 mod errors;
+mod highlevel;
 mod io;
 #[cfg(test)]
 mod tests;

@@ -79,38 +79,26 @@ impl DadaClient {
 
     #[tracing::instrument]
     /// Grab the data buffer size in bytes from a connected DadaClient
-    pub fn data_buf_size(&self) -> PsrdadaResult<usize> {
-        unsafe {
-            let size = ipcbuf_get_bufsz(self.data_buf);
-            Ok(size as usize)
-        }
+    pub fn data_buf_size(&self) -> usize {
+        unsafe { ipcbuf_get_bufsz(self.data_buf) as usize }
     }
 
     #[tracing::instrument]
     /// Grab the header buffer size in bytes from a connected DadaClient
-    pub fn header_buf_size(&self) -> PsrdadaResult<usize> {
-        unsafe {
-            let size = ipcbuf_get_bufsz(self.header_buf);
-            Ok(size as usize)
-        }
+    pub fn header_buf_size(&self) -> usize {
+        unsafe { ipcbuf_get_bufsz(self.header_buf) as usize }
     }
 
     #[tracing::instrument]
     /// Grab the number of data buffers in the ring from a connected DadaClient
-    pub fn data_buf_count(&self) -> PsrdadaResult<usize> {
-        unsafe {
-            let size = ipcbuf_get_nbufs(self.data_buf);
-            Ok(size as usize)
-        }
+    pub fn data_buf_count(&self) -> usize {
+        unsafe { ipcbuf_get_nbufs(self.data_buf) as usize }
     }
 
     #[tracing::instrument]
     /// Grab the number of header buffers in the ring from a connected DadaClient
-    pub fn header_buf_count(&self) -> PsrdadaResult<usize> {
-        unsafe {
-            let size = ipcbuf_get_nbufs(self.header_buf);
-            Ok(size as usize)
-        }
+    pub fn header_buf_count(&self) -> usize {
+        unsafe { ipcbuf_get_nbufs(self.header_buf) as usize }
     }
 
     #[tracing::instrument]
@@ -120,8 +108,8 @@ impl DadaClient {
         unsafe {
             // Ensure that the data blocks are shmem locked
             if ipcbuf_lock(self.data_buf) != 0 {
-                error!("Error locking data buf in shared memory");
-                return Err(PsrdadaError::DadaShmemLockError);
+                warn!("Error locking data buf in shared memory - try rerunning as su");
+                return Ok(());
             }
 
             // Don't register buffers if they reside on the  device
@@ -131,8 +119,8 @@ impl DadaClient {
                 return Ok(());
             }
 
-            let bufsz = self.data_buf_size()?;
-            let nbufs = self.data_buf_count()?;
+            let bufsz = self.data_buf_size();
+            let nbufs = self.data_buf_count();
 
             // Lock each data buffer block as CUDA memory
             for buf_id in 0..nbufs {
@@ -227,9 +215,9 @@ mod tests {
             .header_size(64)
             .build()
             .unwrap();
-        assert_eq!(client.data_buf_size().unwrap(), 128);
-        assert_eq!(client.data_buf_count().unwrap(), 1);
-        assert_eq!(client.header_buf_count().unwrap(), 4);
-        assert_eq!(client.header_buf_size().unwrap(), 64);
+        assert_eq!(client.data_buf_size(), 128);
+        assert_eq!(client.data_buf_count(), 1);
+        assert_eq!(client.header_buf_count(), 4);
+        assert_eq!(client.header_buf_size(), 64);
     }
 }
