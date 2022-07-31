@@ -5,18 +5,22 @@ use lending_iterator::{gat, prelude::*, LendingIterator};
 use psrdada_sys::*;
 use tracing::{debug, error};
 
+/// Client for working with the header ringbuffer
 pub struct HeaderClient<'a> {
     buf: &'a *mut ipcbuf_t,
 }
 
+/// Client for working with the data ringbuffer
 pub struct DataClient<'a> {
     buf: &'a *mut ipcbuf_t,
 }
 
+/// The writer associated with a ringbuffer
 pub struct WriteHalf<'a> {
     buf: &'a *mut ipcbuf_t,
 }
 
+/// The reader associated with a ringbuffer
 pub struct ReadHalf<'a> {
     buf: &'a *mut ipcbuf_t,
     done: bool,
@@ -38,6 +42,7 @@ impl DadaClient {
 }
 
 impl DataClient<'_> {
+    /// Get a reader for this DataClient. This is mutually exclusive with `writer`
     fn reader(&mut self) -> ReadHalf {
         ReadHalf {
             buf: self.buf,
@@ -45,12 +50,14 @@ impl DataClient<'_> {
         }
     }
 
+    /// Get a writer for this DataClient. This is mutually exclusive with `reader`
     fn writer(&mut self) -> WriteHalf {
         WriteHalf { buf: self.buf }
     }
 }
 
 impl HeaderClient<'_> {
+    /// Get a reader for this HeaderClient. This is mutually exclusive with `writer`
     fn reader(&mut self) -> ReadHalf {
         ReadHalf {
             buf: self.buf,
@@ -58,12 +65,14 @@ impl HeaderClient<'_> {
         }
     }
 
+    /// Get a writer for this HeaderClient. This is mutually exclusive with `reader`
     fn writer(&mut self) -> WriteHalf {
         WriteHalf { buf: self.buf }
     }
 }
 
 // If this struct exists, it's locked
+/// The state associated with an in-progress write. This must be dropped (or `commit()`ed) to perform more actions.
 pub struct WriteBlock<'a> {
     bytes_written: usize,
     buf: &'a *mut ipcbuf_t,
@@ -170,6 +179,7 @@ impl std::io::Write for WriteBlock<'_> {
     }
 }
 
+/// The state associated with an in-progress read. This must be dropped to perform more actions.
 pub struct ReadBlock<'a> {
     buf: &'a *mut ipcbuf_t,
     ptr: *const u8,
@@ -208,6 +218,7 @@ impl std::io::Read for ReadBlock<'_> {
 }
 
 impl ReadBlock<'_> {
+    /// Read an entire block from `ReadBlock`
     pub fn read_block(&mut self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.ptr, self.block_size) }
     }
