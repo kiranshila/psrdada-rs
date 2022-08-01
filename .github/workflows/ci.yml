@@ -16,7 +16,7 @@ jobs:
           override: true
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v1
-      - uses: Jimver/cuda-toolkit@0.2.8
+      - uses: Jimver/cuda-toolkit@v0.2.8
         id: cuda-toolkit
         with:
           cuda: "11.7.0"
@@ -42,7 +42,7 @@ jobs:
       RUSTFLAGS: -D warnings
       CARGO_TERM_COLOR: always
     steps:
-      - uses: Jimver/cuda-toolkit@0.2.8
+      - uses: Jimver/cuda-toolkit@v0.2.8
         id: cuda-toolkit
         with:
           cuda: "11.7.0"
