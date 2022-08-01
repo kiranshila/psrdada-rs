@@ -1,6 +1,6 @@
 # psrdada-rs
 
-[![license](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue?style=flat-squaure)](#license)
+[![license](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue?style=flat-square)](#license)
 [![docs](https://img.shields.io/docsrs/psrdada-rs?logo=rust&style=flat-square)](https://docs.rs/psrdada-rs/latest/psrdada-rs/index.html)
 [![rustc](https://img.shields.io/badge/rustc-1.57+-blue?style=flat-square&logo=rust)](https://www.rust-lang.org)
 [![build status](https://img.shields.io/github/workflow/status/GReX-Telescope/psrdada-rs/CI/main?style=flat-square&logo=github)](https://github.com/GReX-Telescope/psrdada-rs/actions)
@@ -124,3 +124,9 @@ End of data doesn't prevent us from reading more data or writing more data. It i
 The iterator interface we provide will produce `None` if we run out of data, trying to be consistent with what that
 might mean. Additionally, there is a very specific order in which eod is set and read. It _must_ be set after `mark_filled`
 and before `unlock_write`. It _must_ be read after `mark_cleared` and before `unlock_read`. Any other ordering doesn't work.
+
+### License
+
+psrdada-rs is distributed under the terms of both the MIT license and the Apache License (Version 2.0).
+
+See [LICENSE-APACHE](LICENSE-APACHE) and [LICENSE-MIT](LICENSE-MIT) for details.
