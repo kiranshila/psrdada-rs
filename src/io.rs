@@ -94,10 +94,11 @@ impl Drop for WriteBlock<'_> {
     }
 }
 
-impl WriteHalf<'_> {
-    /// Grabs the next available block of data we can write
-    /// Returns None if the client fell out from under us or getting a lock errored
-    pub fn next_write_block(&mut self) -> Option<WriteBlock> {
+#[gat]
+impl LendingIterator for WriteHalf<'_> {
+    type Item<'next> = WriteBlock<'next>;
+
+    fn next(&'_ mut self) -> Option<Self::Item<'_>> {
         // Get a lock
         debug!("Locking ringbuffer");
         unsafe {
@@ -261,7 +262,7 @@ mod tests {
         let mut client = DadaClientBuilder::new(key).build().unwrap();
         let (_, mut dc) = client.split();
         let mut writer = dc.writer();
-        let mut db = writer.next_write_block().unwrap();
+        let mut db = writer.next().unwrap();
         let amnt = db
             .write(&[0u8, 1u8, 2u8, 3u8])
             .expect("Writing shouldn't fail");
@@ -274,7 +275,7 @@ mod tests {
         let mut client = DadaClientBuilder::new(key).buf_size(2).build().unwrap();
         let (_, mut dc) = client.split();
         let mut writer = dc.writer();
-        let mut db = writer.next_write_block().unwrap();
+        let mut db = writer.next().unwrap();
         let _er = db
             .write(&[0u8, 1u8, 2u8, 3u8])
             .expect_err("Writing should fail");
@@ -288,7 +289,7 @@ mod tests {
         let bytes = [0u8, 1u8, 2u8, 3u8];
         // Write
         let mut writer = dc.writer();
-        let mut db = writer.next_write_block().unwrap();
+        let mut db = writer.next().unwrap();
         assert_eq!(bytes.len(), db.write(&bytes).unwrap());
         // Commit the memory to the ring buffer
         db.commit();
@@ -315,7 +316,7 @@ mod tests {
         let bytes = [0u8, 1u8, 2u8, 3u8];
         // Write
         let mut writer = dc.writer();
-        let mut db = writer.next_write_block().unwrap();
+        let mut db = writer.next().unwrap();
         assert_eq!(bytes.len(), db.write(&bytes).unwrap());
         // Commit the memory to the ring buffer
         db.commit();
@@ -332,7 +333,7 @@ mod tests {
         let bytes = [0u8, 1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8];
         let mut writer = dc.writer();
 
-        let mut db = writer.next_write_block().unwrap();
+        let mut db = writer.next().unwrap();
         assert_eq!(4, db.write(&bytes[0..4]).unwrap());
         assert_eq!(4, db.write(&bytes[4..]).unwrap());
         db.commit();
@@ -355,19 +356,19 @@ mod tests {
 
         // Fill the buffer
         let bytes = [0u8, 1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8];
-        let mut db = writer.next_write_block().unwrap();
+        let mut db = writer.next().unwrap();
         assert_eq!(8, db.write(&bytes).unwrap());
         db.commit();
 
-        let mut db = writer.next_write_block().unwrap();
+        let mut db = writer.next().unwrap();
         assert_eq!(8, db.write(&bytes).unwrap());
         db.commit();
 
-        let mut db = writer.next_write_block().unwrap();
+        let mut db = writer.next().unwrap();
         assert_eq!(8, db.write(&bytes).unwrap());
         db.commit();
 
-        let mut db = writer.next_write_block().unwrap();
+        let mut db = writer.next().unwrap();
         assert_eq!(8, db.write(&bytes).unwrap());
         db.commit();
 
@@ -389,11 +390,11 @@ mod tests {
 
         // Write full buffers twice, second one being eod
         let bytes = [0u8, 1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8];
-        let mut db = writer.next_write_block().unwrap();
+        let mut db = writer.next().unwrap();
         assert_eq!(8, db.write(&bytes).unwrap());
         db.commit();
 
-        let mut db = writer.next_write_block().unwrap();
+        let mut db = writer.next().unwrap();
         assert_eq!(8, db.write(&bytes).unwrap());
         db.eod();
         db.commit();
@@ -416,12 +417,12 @@ mod tests {
 
         // Write one full buffer, one less than full
         let bytes = [0u8, 1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8];
-        let mut db = writer.next_write_block().unwrap();
+        let mut db = writer.next().unwrap();
         assert_eq!(8, db.write(&bytes).unwrap());
         db.commit();
 
         let bytes_fewer = [0u8, 1u8, 2u8, 3u8, 4u8, 5u8, 6u8];
-        let mut db = writer.next_write_block().unwrap();
+        let mut db = writer.next().unwrap();
         assert_eq!(7, db.write(&bytes_fewer).unwrap());
         db.commit();
 
@@ -442,7 +443,7 @@ mod tests {
         let mut writer = hc.writer();
 
         let bytes = [0u8; 128];
-        let mut hb = writer.next_write_block().unwrap();
+        let mut hb = writer.next().unwrap();
         assert_eq!(128, hb.write(&bytes).unwrap());
         hb.commit();
 
