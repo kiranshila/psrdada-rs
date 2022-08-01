@@ -19,3 +19,6 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["e
 [features]
 # Enables CUDA support
 cuda = ["psrdada-sys/cuda"]
+
+[workspace]
+members = ["psrdada-sys"]
