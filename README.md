@@ -1,19 +1,12 @@
 # psrdada-rs
 
-A Rust high level wrapper around the
-[psrdada](http://psrdada.sourceforge.net/) shared memory ring buffer library,
-common in radio astronomy.
+[![license](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue?style=flat-squaure)](#license)
+[![docs](https://img.shields.io/docsrs/psrdada-rs?logo=rust&style=flat-square)](https://docs.rs/psrdada-rs/latest/psrdada-rs/index.html)
+[![rustc](https://img.shields.io/badge/rustc-1.57+-blue?style=flat-square&logo=rust)](https://www.rust-lang.org)
+[![build status](https://img.shields.io/github/workflow/status/GReX-Telescope/psrdada-rs/CI/main?style=flat-square&logo=github)](https://github.com/GReX-Telescope/psrdada-rs/actions)
+[![Codecov](https://img.shields.io/codecov/c/github/GReX-Telescope/psrdada-rs?style=flat-square)](https://app.codecov.io/gh/GReX-Telescope/psrdada-rs)
 
-PSRDada itself is completley undocumented and yet is mysteriously popular in radio astronomy.
-This library tries to ascertain how the source is used, but may be incorrect. As such, use
-at your own risk.
-
-This crate will provide a "safeish" interface, trying to minimize the probability
-of memory errors. `psrdada-sys`, also provided here, is the
-[bindgen](https://github.com/rust-lang/rust-bindgen)-produced raw rust bindings.
-To minimize effort, the `psrdada` library artifact is built during compile time
-of the bindings using the [cc](https://docs.rs/cc/latest/cc/) crate. All that's
-required is that you have a working C compiler.
-
-Unlike the upstream package, we'll try to keep things documented and tested as
-this could hopefully be used in "production" code.
+This is a rust library around the [psrdada](http://psrdada.sourceforge.net/) library commonly used in radio astronomy.
+Unfortunately, the C library is for the most part undocumented, so the behavior presented by this rust library is what
+the authors have been able to ascertain by reading the original example code.
+As such, this might not be a 1-to-1 implementation of the original use case.
