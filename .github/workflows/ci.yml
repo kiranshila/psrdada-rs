@@ -21,7 +21,7 @@ jobs:
         with:
           cuda: "11.7.0"
       - env:
-          PKG_CONFIG_PATH: "$CUDA_PATH"
+          PKG_CONFIG_PATH: "${{steps.cuda-toolkit.outputs.CUDA_PATH}}"
       - name: Lint (clippy)
         uses: actions-rs/cargo@v1
         with:
@@ -49,7 +49,7 @@ jobs:
         with:
           cuda: "11.7.0"
       - env:
-          PKG_CONFIG_PATH: "$CUDA_PATH"
+          PKG_CONFIG_PATH: "${{steps.cuda-toolkit.outputs.CUDA_PATH}}"
       - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
