@@ -1,5 +1,3 @@
-use std::ffi::c_void;
-
 use psrdada_sys::*;
 use tracing::{debug, error, warn};
 
@@ -154,7 +152,7 @@ impl DadaClient {
             for buf_id in 0..nbufs {
                 let block = std::slice::from_raw_parts((*(self.data_buf)).buffer, nbufs)[buf_id];
                 // Check for cudaSuccess (0)
-                if cudaHostRegister(block as *mut c_void, bufsz as u64, 0) != 0 {
+                if cudaHostRegister(block as *mut std::ffi::c_void, bufsz as u64, 0) != 0 {
                     error!("Error registering GPU memory");
                     return Err(PsrdadaError::GpuError);
                 }
