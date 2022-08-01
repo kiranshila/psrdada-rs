@@ -1,7 +1,7 @@
 # psrdada-rs
 
 [![license](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue?style=flat-square)](#license)
-[![docs](https://img.shields.io/docsrs/psrdada-rs?logo=rust&style=flat-square)](https://docs.rs/psrdada-rs/latest/psrdada-rs/index.html)
+[![docs](https://img.shields.io/docsrs/psrdada?logo=rust&style=flat-square)](https://docs.rs/psrdada/latest/psrdada/index.html)
 [![rustc](https://img.shields.io/badge/rustc-1.57+-blue?style=flat-square&logo=rust)](https://www.rust-lang.org)
 [![build status](https://img.shields.io/github/workflow/status/kiranshila/psrdada-rs/CI/main?style=flat-square&logo=github)](https://github.com/kiranshila/psrdada-rs/actions)
 [![Codecov](https://img.shields.io/codecov/c/github/kiranshila/psrdada-rs?style=flat-square)](https://app.codecov.io/gh/kiranshila/psrdada-rs)
