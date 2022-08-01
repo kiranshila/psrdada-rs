@@ -16,16 +16,11 @@ jobs:
           override: true
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v1
-      - uses: Jimver/cuda-toolkit@v0.2.8
-        id: cuda-toolkit
-        with:
-          cuda: "11.7.0"
-      - run: "export PKG_CONFIG_PATH=${{steps.cuda-toolkit.outputs.CUDA_PATH}}"
       - name: Lint (clippy)
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all-targets --all-features
+          args: --all-targets
       - name: Lint (rustfmt)
         uses: actions-rs/cargo@v1
         with:
@@ -43,11 +38,6 @@ jobs:
       RUSTFLAGS: -D warnings
       CARGO_TERM_COLOR: always
     steps:
-      - uses: Jimver/cuda-toolkit@v0.2.8
-        id: cuda-toolkit
-        with:
-          cuda: "11.7.0"
-      - run: "export PKG_CONFIG_PATH=${{steps.cuda-toolkit.outputs.CUDA_PATH}}"
       - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
@@ -55,16 +45,16 @@ jobs:
           override: true
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v1
-      - name: Build all targets with all features
+      - name: Build all targets with
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --all-targets --all-features
+          args: --all-targets
       - name: Doctests
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --doc --all-features
+          args: --doc
       - name: Install latest nextest release
         uses: taiki-e/install-action@nextest
       - name: Test with latest nextest release
