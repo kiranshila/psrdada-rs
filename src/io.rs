@@ -1,9 +1,10 @@
 //! This module contains the safe implementation of low-level reading and writing from psrdada ringbuffers
 
-use crate::client::{DataClient, HeaderClient};
 use lending_iterator::{gat, prelude::*, LendingIterator};
 use psrdada_sys::*;
 use tracing::{debug, error};
+
+use crate::client::{DataClient, HeaderClient};
 
 /// The writer associated with a ringbuffer
 pub struct WriteHalf<'a> {
@@ -249,11 +250,10 @@ impl LendingIterator for ReadHalf<'_> {
 mod tests {
     use std::io::Write;
 
-    use crate::builder::DadaClientBuilder;
-    use crate::client::DadaClient;
-    use crate::tests::next_key;
     use lending_iterator::LendingIterator;
     use test_log::test;
+
+    use crate::{builder::DadaClientBuilder, client::DadaClient, tests::next_key};
 
     #[test]
     fn test_write() {

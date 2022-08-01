@@ -40,10 +40,8 @@
 //!
 //! Going from a `HashMap<String,String>`, we will print keys as is, separated by a single space with newlines separating pairs.
 
-use crate::{
-    client::{DadaClient, HeaderClient},
-    errors::{PsrdadaError, PsrdadaResult},
-};
+use std::{collections::HashMap, str};
+
 use nom::{
     bytes::complete::{is_not, tag},
     character::complete::{line_ending, not_line_ending, space0, space1},
@@ -53,7 +51,11 @@ use nom::{
     IResult,
 };
 use psrdada_sys::ipcbuf_get_bufsz;
-use std::{collections::HashMap, str};
+
+use crate::{
+    client::{DadaClient, HeaderClient},
+    errors::{PsrdadaError, PsrdadaResult},
+};
 
 type RawPair<'a> = (&'a [u8], &'a [u8]);
 
@@ -77,7 +79,9 @@ fn header(input: &[u8]) -> IResult<&[u8], Vec<RawPair>> {
 
 /// Convert a `HashMap<String,String>` into a psrdada-compatible vector of bytes
 ///
-/// Safety: there are limitations on what can be a key and a value. For example, neither
+/// # Safety
+///
+/// There are limitations on what can be a key and a value. For example, neither
 /// can contain spaces, tabs, newlines, #, or \0. We are not validating that here so you could
 /// end up with bad bytes in the end.
 pub unsafe fn header_to_bytes(header: &HashMap<String, String>) -> Vec<u8> {
@@ -97,10 +101,10 @@ pub fn bytes_to_header(bytes: &[u8]) -> PsrdadaResult<HashMap<String, String>> {
         .iter()
         .map(|(k, v)| {
             (
-                str::from_utf8(*k)
+                str::from_utf8(k)
                     .expect("We would've failed parsing earlier")
                     .to_owned(),
-                str::from_utf8(*v)
+                str::from_utf8(v)
                     .expect("We would've failed parsing earlier")
                     .to_owned(),
             )
@@ -109,6 +113,13 @@ pub fn bytes_to_header(bytes: &[u8]) -> PsrdadaResult<HashMap<String, String>> {
 }
 
 impl HeaderClient<'_> {
+    /// Push a `HashMap<String,String>` into into the header ringbuffer
+    ///
+    /// # Safety
+    ///
+    /// There are limitations on what can be a key and a value. For example, neither
+    /// can contain spaces, tabs, newlines, #, or \0. We are not validating that here so you could
+    /// end up with bad bytes in the end.
     pub unsafe fn push_header(&mut self, header: &HashMap<String, String>) -> PsrdadaResult<usize> {
         let bytes = header_to_bytes(header);
         let bufsz = ipcbuf_get_bufsz(*self.buf);
@@ -130,6 +141,13 @@ impl HeaderClient<'_> {
 }
 
 impl DadaClient {
+    /// Push a `HashMap<String,String>` into the header ringbuffer
+    ///
+    /// # Safety
+    ///
+    /// There are limitations on what can be a key and a value. For example, neither
+    /// can contain spaces, tabs, newlines, #, or \0. We are not validating that here so you could
+    /// end up with bad bytes in the end.
     pub unsafe fn push_header(&mut self, header: &HashMap<String, String>) -> PsrdadaResult<usize> {
         let (mut hc, _) = self.split();
         hc.push_header(header)
@@ -143,9 +161,8 @@ impl DadaClient {
 
 #[cfg(test)]
 mod tests {
-    use crate::{builder::DadaClientBuilder, tests::next_key};
-
     use super::*;
+    use crate::{builder::DadaClientBuilder, tests::next_key};
 
     #[test]
     fn test_to_and_from_header() {

@@ -62,8 +62,9 @@ impl Default for dada_hdu_t {
 
 #[cfg(test)]
 mod handwriten_tests {
-    use super::*;
     use page_size;
+
+    use super::*;
 
     unsafe fn default_ipcbuf() -> ipcbuf_t {
         ipcbuf_t {

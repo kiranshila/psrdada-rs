@@ -1,12 +1,14 @@
 //! Higher level abstractions for working with the Read and Write halves as well as directly pushing and poping from the data ringbuffer
 
+use std::io::Write;
+
+use lending_iterator::LendingIterator;
+
 use crate::{
     client::DadaClient,
     errors::{PsrdadaError, PsrdadaResult},
     io::{ReadHalf, WriteHalf},
 };
-use lending_iterator::LendingIterator;
-use std::io::Write;
 
 impl WriteHalf<'_> {
     /// Push data onto the corresponding ringbuffer and return how many bytes we wrote

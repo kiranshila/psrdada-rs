@@ -211,10 +211,9 @@ impl Drop for DadaClient {
             }
         }
         // Now deal with the fact that we boxed these raw ptrs
-        // Just creating the box and letting them leave scope calls their destructor
         unsafe {
-            Box::from_raw(self.data_buf);
-            Box::from_raw(self.header_buf);
+            drop(Box::from_raw(self.data_buf));
+            drop(Box::from_raw(self.header_buf));
         }
     }
 }
