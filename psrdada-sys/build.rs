@@ -1,10 +1,7 @@
 extern crate bindgen;
 extern crate cc;
 
-use std::env;
-use std::fs;
-use std::io::Write;
-use std::path::PathBuf;
+use std::{env, fs, io::Write, path::PathBuf};
 
 fn main() {
     // Build vendor library
@@ -33,9 +30,14 @@ fn main() {
     c.warnings(false);
 
     // Use pkg_config to find CUDA
-    let cuda = pkg_config::probe_library("cuda").unwrap();
+    let cuda = if cfg!(feature = "cuda") {
+        Some(pkg_config::probe_library("cuda").unwrap())
+    } else {
+        None
+    };
 
     // Use CUDA - can we gate this here to hardware?
+    #[cfg(feature = "cuda")]
     c.cuda(true)
         .flag("-cudart=static")
         .flag("-allow-unsupported-compiler")
@@ -47,7 +49,7 @@ fn main() {
     write!(
         config_h,
         r#"
-        #define HAVE_CUDA 1
+        {}
         #define HAVE_ALARM 1
         #define HAVE_ARPA_INET_H 1
         #define HAVE_DLFCN_H 1
@@ -110,6 +112,11 @@ fn main() {
         #define TIME_WITH_SYS_TIME 1
         #define VERSION "1.0"
         "#,
+        if cfg!(feature = "cuda") {
+            "#define HAVE_CUDA 1"
+        } else {
+            ""
+        }
     )
     .unwrap();
 
@@ -147,14 +154,37 @@ fn main() {
         .file("vendor/src/sock.c")
         .file("vendor/src/string_array.c")
         .file("vendor/src/stopwatch.c")
-        .file("vendor/src/tmutil.c")
-        // CUDA Files
-        .file("vendor/src/dada_cuda.cu")
+        .file("vendor/src/tmutil.c");
+
+    #[cfg(feature = "cuda")]
+    c.file("vendor/src/dada_cuda.cu")
         .file("vendor/src/ipcbuf_cuda.cu")
         .file("vendor/src/ipcio_cuda.cu")
-        .file("vendor/src/ipcutil_cuda.cu")
-        // Compile
-        .compile("psrdada");
+        .file("vendor/src/ipcutil_cuda.cu");
+
+    // Compile
+    c.compile("psrdada");
+
+    // ------ BINDGEN
+
+    // Generate the wrapper file
+    let mut wrapper_h = fs::File::create(root.join("wrapper.h")).unwrap();
+    write!(
+        wrapper_h,
+        r#"
+        #include "vendor/src/dada_client.h"
+        #include "vendor/src/dada_def.h"
+        #include "vendor/src/dada_hdu.h"
+        #include "vendor/src/dada_msg.h"
+        #include "vendor/src/ipcbuf.h"
+        {}"#,
+        if cfg!(feature = "cuda") {
+            r#"#include "vendor/src/dada_cuda.h""#
+        } else {
+            ""
+        }
+    )
+    .unwrap();
 
     // Tell cargo to invalidate the built crate whenever the wrapper changes
     println!("cargo:rerun-if-changed=wrapper.h");
@@ -162,25 +192,29 @@ fn main() {
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
     // the resulting bindings.
-    let bindings = bindgen::Builder::default()
+    let mut binding_gen = bindgen::Builder::default()
         // The input header we would like to generate
         // bindings for.
         .header("wrapper.h")
+        .blocklist_file("cuda_runtime.h")
         // Tell cargo to invalidate the built crate whenever any of the
         // included header files changed.
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         // Tell bindgen about the structs which have mutexes, so they don't `copy`
-        .no_copy("multilog_t")
-        // Tell clang where to look for CUDA headers
-        .clang_args(
-            cuda.include_paths
-                .into_iter()
-                .map(|p| format!("-I{}", p.display())),
-        )
-        // Finish the builder and generate the bindings.
-        .generate()
-        // Unwrap the Result and panic on failure.
-        .expect("Unable to generate bindings");
+        .no_copy("multilog_t");
+
+    if cfg!(feature = "cuda") {
+        binding_gen = match cuda {
+            Some(c) => binding_gen.clang_args(
+                c.include_paths
+                    .into_iter()
+                    .map(|p| format!("-I{}", p.display())),
+            ),
+            None => panic!("The CUDA feature is enabled, but pkg-config can't find it"),
+        };
+    }
+
+    let bindings = binding_gen.generate().expect("Unable to generate bindings");
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
