@@ -1,4 +1,5 @@
 /target
 psrdada-sys/target
+psrdada-sys/vendor/.ccls-cache
 .ccls-cache
 .vscode/

@@ -8,6 +8,7 @@ psrdada-sys = {path = "./psrdada-sys"}
 page_size = "0.4"
 tracing = "0.1"
 lending-iterator = "0.1"
+nom = "7.1.1"
 
 [dev-dependencies]
 test-log = { version = "0.2", features = ["trace"] }

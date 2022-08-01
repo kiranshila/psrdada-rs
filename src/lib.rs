@@ -54,12 +54,12 @@
 //! might mean. Additionally, there is a very specific order in which eod is set and read. It *must* be set after `mark_filled`
 //! and before `unlock_write`. It *must* be read after `mark_cleared` and before `unlock_read`. Any other ordering doesn't work.
 
-mod builder;
-mod client;
-mod errors;
-mod headers;
-mod highlevel;
-mod io;
+pub mod builder;
+pub mod client;
+pub mod errors;
+pub mod headers;
+pub mod highlevel;
+pub mod io;
 #[cfg(test)]
 mod tests;
 

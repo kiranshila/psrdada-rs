@@ -13,6 +13,8 @@ pub enum PsrdadaError {
     DadaShmemLockError,
     UTF8Error,
     HeaderOverflow,
+    HeaderParseError,
+    HeaderEodError,
     GpuError,
 }
 

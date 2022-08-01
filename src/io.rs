@@ -1,6 +1,6 @@
 //! This module contains the safe implementation of low-level reading and writing from psrdada ringbuffers
 
-use crate::client::{DadaClient, DataClient, HeaderClient};
+use crate::client::{DataClient, HeaderClient};
 use lending_iterator::{gat, prelude::*, LendingIterator};
 use psrdada_sys::*;
 use tracing::{debug, error};

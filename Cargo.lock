@@ -413,6 +413,7 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "lending-iterator",
+ "nom",
  "page_size",
  "psrdada-sys",
  "test-log",
