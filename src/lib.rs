@@ -9,12 +9,12 @@
 //!
 //! Use this library if you want a safe abstraction around working with psrdada.
 //! As in, use this library if you need to interface with applications that are expecting psrdada buffers.
-//! Do not use if you don't have to, as it (psrdada itself) isn't as performant or featurefull as other IPC libraries.
+//! Do not use if you don't have to, as it (psrdada itself) isn't as performant or featureful as other IPC libraries.
 //!
 //! ### Alternatives
 //!
-//! The rust library [shmem-ipc](https://github.com/diwic/shmem-ipc) has excellent performance over shmem, usefull for large
-//! data transfers (like windows of spectal data). It creates shared ringbuffers, much like psrdada.
+//! The rust library [shmem-ipc](https://github.com/diwic/shmem-ipc) has excellent performance over shmem, useful for large
+//! data transfers (like windows of spectral data). It creates shared ringbuffers, much like psrdada.
 //! Interfacing with D-Bus is fine for signalling and headers.
 //!
 //! If you *need* CUDA support, [NVSHMEM](https://developer.nvidia.com/nvshmem)
@@ -106,9 +106,9 @@
 //!
 //! They are wrappers around `ipcbuf_t` and have all sorts of undefined behavior.
 //! Specifically, `ipcio_t` reimplemented stdlib `read` and `write` behavior, but in unsafe ways.
-//! Our abstraction presented here reimplements the behavior, but with Rust's compile-time gauruntees.
+//! Our abstraction presented here reimplements the behavior, but with Rust's compile-time guarantees.
 //! `dada_hdu` combines two `ipcbuf_t`s, the header and data buffers.
-//! However, doing so breaks CUDA support (for some reason) and messes up the signalling of successful reads.
+//! However, doing so breaks CUDA support (for some reason) and messes up the signaling of successful reads.
 //!
 //! - "End of data" is more or less a meaningless flag.
 //!
