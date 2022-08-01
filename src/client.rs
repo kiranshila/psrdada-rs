@@ -1,8 +1,9 @@
 use std::ffi::c_void;
 
-use crate::errors::{PsrdadaError, PsrdadaResult};
 use psrdada_sys::*;
 use tracing::{debug, error, warn};
+
+use crate::errors::{PsrdadaError, PsrdadaResult};
 
 #[derive(Debug)]
 /// The struct that stores the Header + Data ringbuffers
@@ -61,6 +62,7 @@ impl DadaClient {
             allocated: false,
         };
         // Pin memory as CUDA memory (if it is actually CUDA memory)
+        #[cfg(feature = "cuda")]
         s.cuda_register()?;
         Ok(s)
     }
@@ -127,6 +129,7 @@ impl DadaClient {
     }
 
     #[tracing::instrument]
+    #[cfg(feature = "cuda")]
     /// Register the data buffer as GPU pinned memory (the header buffer is on the CPU (hopefully))
     /// We do this on construction and should be a nop for CPU memory
     fn cuda_register(&self) -> PsrdadaResult<()> {
@@ -218,10 +221,10 @@ impl Drop for DadaClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::builder::DadaClientBuilder;
-    use crate::tests::next_key;
     use test_log::test;
+
+    use super::*;
+    use crate::{builder::DadaClientBuilder, tests::next_key};
 
     #[test]
     fn test_connect() {

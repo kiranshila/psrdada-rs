@@ -1,9 +1,10 @@
+use psrdada_sys::*;
+use tracing::{debug, error, warn};
+
 use crate::{
     client::DadaClient,
     errors::{PsrdadaError, PsrdadaResult},
 };
-use psrdada_sys::*;
-use tracing::{debug, error, warn};
 
 #[derive(Debug)]
 pub struct DadaClientBuilder {
@@ -56,6 +57,7 @@ impl DadaClientBuilder {
         self
     }
 
+    #[cfg(feature = "cuda")]
     pub fn cuda_device(mut self, value: u32) -> Self {
         self.cuda_device = Some(value as i32);
         self
@@ -143,10 +145,10 @@ impl DadaClientBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::next_key;
     use test_log::test;
 
     use super::*;
+    use crate::tests::next_key;
 
     #[test]
     fn test_construct_client() {
@@ -155,6 +157,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "cuda")]
     fn test_construct_cuda_client() {
         let key = next_key();
         let _client = DadaClientBuilder::new(key).cuda_device(0).build().unwrap();
