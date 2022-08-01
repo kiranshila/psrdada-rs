@@ -1,5 +1,6 @@
 /target
 psrdada-sys/target
 psrdada-sys/vendor/.ccls-cache
+psrdada-sys/wrapper.h
 .ccls-cache
 .vscode/
