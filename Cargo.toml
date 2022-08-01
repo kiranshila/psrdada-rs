@@ -13,7 +13,7 @@ keywords = ["astronomy", "protocol", "telescope"]
 categories = ["encoding","parser-implementations"]
 
 [dependencies]
-psrdada-sys = {path = "./psrdada-sys"}
+psrdada-sys = {path = "./psrdada-sys", version = "0.1.0"}
 page_size = "0.4"
 tracing = "0.1"
 lending-iterator = "0.1"
