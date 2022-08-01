@@ -6,10 +6,10 @@ links = "psrdada"
 authors = [ "Kiran Shila <me@kiranshila.com>" ]
 rust-version = "1.57.0"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/GReX-Telescope/psrdada-rs"
 description = "Bingen wrappers for psrdada"
-homepage = "https://github.com/GReX-Telescope/psrdada-rs"
 readme = "../README.md"
+homepage = "https://github.com/kiranshila/psrdada-rs"
+repository = "https://github.com/kiranshila/psrdada-rs"
 keywords = ["astronomy", "protocol", "telescope"]
 categories = ["encoding","parser-implementations"]
 
