@@ -166,25 +166,8 @@ fn main() {
     c.compile("psrdada");
 
     // ------ BINDGEN
-
-    // Generate the wrapper file
-    let mut wrapper_h = fs::File::create(root.join("wrapper.h")).unwrap();
-    write!(
-        wrapper_h,
-        r#"
-        #include "vendor/src/dada_client.h"
-        #include "vendor/src/dada_def.h"
-        #include "vendor/src/dada_hdu.h"
-        #include "vendor/src/dada_msg.h"
-        #include "vendor/src/ipcbuf.h"
-        {}"#,
-        if cfg!(feature = "cuda") {
-            r#"#include "vendor/src/dada_cuda.h""#
-        } else {
-            ""
-        }
-    )
-    .unwrap();
+    // Tell cargo to invalidate the built crate whenever the wrapper changes
+    println!("cargo:rerun-if-changed=wrapper.h");
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
@@ -193,7 +176,6 @@ fn main() {
         // The input header we would like to generate
         // bindings for.
         .header("wrapper.h")
-        .blocklist_file("cuda_runtime.h")
         // Tell cargo to invalidate the built crate whenever any of the
         // included header files changed.
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))

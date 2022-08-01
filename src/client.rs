@@ -1,5 +1,7 @@
 //! Implementations for the paired and split clients
 
+#[cfg(feature = "cuda")]
+use cuda_runtime_sys::{cudaError, cudaHostRegister};
 use psrdada_sys::*;
 use tracing::{debug, error, warn};
 
@@ -133,6 +135,8 @@ impl DadaClient {
     /// Register the data buffer as GPU pinned memory (the header buffer is on the CPU (hopefully))
     /// We do this on construction and should be a nop for CPU memory
     fn cuda_register(&self) -> PsrdadaResult<()> {
+        use tracing::trace;
+
         unsafe {
             // Ensure that the data blocks are shmem locked
             if ipcbuf_lock(self.data_buf) != 0 {
@@ -154,14 +158,18 @@ impl DadaClient {
             for buf_id in 0..nbufs {
                 let block = std::slice::from_raw_parts((*(self.data_buf)).buffer, nbufs)[buf_id];
                 // Check for cudaSuccess (0)
-                if cudaHostRegister(block as *mut std::ffi::c_void, bufsz as u64, 0) != 0 {
+                if let cudaError::cudaSuccess =
+                    cudaHostRegister(block as *mut std::ffi::c_void, bufsz, 0)
+                {
+                    trace!(buf_id, "Registered block as GPU memory");
+                } else {
                     error!("Error registering GPU memory");
                     return Err(PsrdadaError::GpuError);
                 }
             }
             debug!("Registered data block as GPU memory!");
+            Ok(())
         }
-        Ok(())
     }
 
     #[tracing::instrument]
