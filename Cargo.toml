@@ -2,6 +2,15 @@
 name = "psrdada"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.57.0"
+authors = [ "Kiran Shila <me@kiranshila.com>" ]
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/GReX-Telescope/psrdada-rs"
+description = "A rusty wrapper for the psrdada radio astronomy library"
+homepage = "https://github.com/GReX-Telescope/psrdada-rs"
+readme = "README.md"
+keywords = ["astronomy", "protocol", "telescope"]
+categories = ["encoding","parser-implementations"]
 
 [dependencies]
 psrdada-sys = {path = "./psrdada-sys"}

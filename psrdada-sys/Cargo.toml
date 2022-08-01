@@ -3,6 +3,16 @@ name = "psrdada-sys"
 version = "0.1.0"
 edition = "2021"
 links = "psrdada"
+authors = [ "Kiran Shila <me@kiranshila.com>" ]
+rust-version = "1.57.0"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/GReX-Telescope/psrdada-rs"
+description = "Bingen wrappers for psrdada"
+homepage = "https://github.com/GReX-Telescope/psrdada-rs"
+readme = "../README.md"
+keywords = ["astronomy", "protocol", "telescope"]
+categories = ["encoding","parser-implementations"]
+
 
 [build-dependencies]
 bindgen = "0.60"
