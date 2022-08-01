@@ -16,6 +16,10 @@ jobs:
           override: true
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v1
+      - uses: Jimver/cuda-toolkit@0.2.8
+        id: cuda-toolkit
+        with:
+          cuda: "11.7.0"
       - name: Lint (clippy)
         uses: actions-rs/cargo@v1
         with:
@@ -38,6 +42,10 @@ jobs:
       RUSTFLAGS: -D warnings
       CARGO_TERM_COLOR: always
     steps:
+      - uses: Jimver/cuda-toolkit@0.2.8
+        id: cuda-toolkit
+        with:
+          cuda: "11.7.0"
       - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
@@ -61,12 +69,12 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: nextest
-          args: run --all-features
+          args: run
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Generate code coverage
         if: startsWith(matrix.rust-version, 'stable')
-        run: cargo llvm-cov nextest --all-features --workspace --lcov --output-path lcov.info
+        run: cargo llvm-cov nextest --workspace --lcov --output-path lcov.info
       - name: Upload coverage to Codecov
         if: startsWith(matrix.rust-version, 'stable')
         uses: codecov/codecov-action@v3
