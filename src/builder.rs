@@ -1,3 +1,5 @@
+//! Builder-pattern implementation of creating psrdada buffers
+
 use psrdada_sys::*;
 use tracing::{debug, error, warn};
 
@@ -20,6 +22,7 @@ pub struct DadaClientBuilder {
 }
 
 impl DadaClientBuilder {
+    /// Create a new builder with a given `key`
     pub fn new(key: i32) -> Self {
         Self {
             key,
@@ -32,32 +35,38 @@ impl DadaClientBuilder {
         }
     }
 
+    /// Number of data blocks
     pub fn num_bufs(mut self, value: u64) -> Self {
         self.num_bufs = Some(value);
         self
     }
 
+    /// Size in bytes of each data block
     pub fn buf_size(mut self, value: u64) -> Self {
         self.buf_size = Some(value);
         self
     }
 
+    /// Number of header blocks
     pub fn num_headers(mut self, value: u64) -> Self {
         self.num_headers = Some(value);
         self
     }
 
+    /// Size in bytes of each header block
     pub fn header_size(mut self, value: u64) -> Self {
         self.header_size = Some(value);
         self
     }
 
+    /// Lock the resulting buffers in shared memory
     pub fn lock(mut self, value: bool) -> Self {
         self.lock = Some(value);
         self
     }
 
     #[cfg(feature = "cuda")]
+    /// The CUDA devices to pin the memory to
     pub fn cuda_device(mut self, value: u32) -> Self {
         self.cuda_device = Some(value as i32);
         self

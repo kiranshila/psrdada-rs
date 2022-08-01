@@ -1,3 +1,5 @@
+//! Error types for this crate
+
 #[derive(Debug, PartialEq, Eq)]
 /// All the errors we can return
 pub enum PsrdadaError {

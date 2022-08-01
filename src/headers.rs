@@ -1,4 +1,4 @@
-//! This module contains the implementation of header serialization and deserialization
+//! Implementation of header serialization and deserialization
 //!
 //! While the header ringbuffer is just like the data ringbuffer, there is "convention" that
 //! it contains key/value pairs of ASCII plaintext. Nothing about the C abstraction guarantees that,

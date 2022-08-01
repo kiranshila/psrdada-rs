@@ -1,3 +1,5 @@
+//! Implementations for the paired and split clients
+
 use psrdada_sys::*;
 use tracing::{debug, error, warn};
 

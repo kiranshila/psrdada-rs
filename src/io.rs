@@ -1,4 +1,4 @@
-//! This module contains the safe implementation of low-level reading and writing from psrdada ringbuffers
+//! Ssafe implementations of low-level reading and writing from psrdada ringbuffers
 
 use lending_iterator::{gat, prelude::*, LendingIterator};
 use psrdada_sys::*;
