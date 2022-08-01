@@ -13,7 +13,7 @@ use crate::{
 impl WriteHalf<'_> {
     /// Push data onto the corresponding ringbuffer and return how many bytes we wrote
     pub fn push(&mut self, data: &[u8]) -> PsrdadaResult<usize> {
-        let mut block = match self.next_write_block() {
+        let mut block = match self.next() {
             Some(b) => b,
             None => return Err(PsrdadaError::DadaWriteError),
         };

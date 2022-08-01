@@ -30,12 +30,75 @@
 //! ## Installation
 //!
 //! We are building and linking the psrdada library as part of the build of this crate, which requires you have a working C compiler.
-//! See the [cc](https://docs.rs/cc/latest/cc/) crate for more details. This includes building with CUDA support (even if you don't
-//! have an NVIDIA graphics card).
+//! See the [cc](https://docs.rs/cc/latest/cc/) crate for more details.
+//! If you want CUDA support (enabled with the `cuda` feature), you need CUDA installed.
+//!
+//! ## Example
+//!
+//! The most simple way to use this library is to use the top-level `push` and `pop` methods.
+//! ```rust
+//! use std::collections::HashMap;
+//! use psrdada::builder::DadaClientBuilder;
+//!
+//! let key = 0xb0ba;
+//! let mut client = DadaClientBuilder::new(key).build().unwrap();
+
+//! let data = [0u8, 5u8, 10u8];
+//! let header = HashMap::from([
+//!     ("foo".to_owned(), "bar".to_owned()),
+//!     ("baz".to_owned(), "buzz".to_owned()),
+//! ]);
+
+//! client.push_data(&data).unwrap();
+//! // Unsafe as we're not checking if the keys and values are valid
+//! unsafe { client.push_header(&header).unwrap() };
+//! ```
+//! 
+//! Beyond this, you can `split` the `DadaClient` into separate clients for headers and data, which can then be read and written to/from.
 //!
 //! ## Safety
 //!
-//! The original library is intrinsically unsafe as it is written in C.
+//! The original library is intrinsically unsafe as it is written in C. This library tries to ensure at compile time some of the things the
+//! C library checks at runtime. For example, If you try to write to buffer while something else is trying to read (from the same `DadaClient`), this
+//! would usually fail a lock. Instead, in this library, we use Rust's borrowing system to ensure you can't build both at the same time.
+//!
+//! Take the following code as an example
+//! ```rust
+//! use std::io::{Read, Write};
+//!
+//! use lending_iterator::LendingIterator;
+//! use psrdada::builder::DadaClientBuilder;
+//!
+//! // Build the paired client
+//! let key = 0xb0ba;
+//! let mut client = DadaClientBuilder::new(key).build().unwrap();
+//!
+//! // Split into individual clients
+//! let (_, mut data_client) = client.split();
+//!
+//! // Construct the writer (mutable borrow)
+//! let mut writer = data_client.writer();
+//!
+//! // Grab the next block in the ring (assuming we can)
+//! let mut write_block = writer.next().unwrap();
+//!
+//! // Write using std::io::Write so you can write chunks at a time
+//! write_block.write_all(&[0u8; 10]).unwrap();
+//! write_block.commit();
+//!
+//! // Construct the reader (mutable borrow)
+//! let mut reader = data_client.reader();
+//!
+//! // Grab the next read block in the ring
+//! let mut read_block = reader.next().unwrap();
+//!
+//! // Read using std::io::Read
+//! let mut buf = [0u8; 10];
+//! read_block.read_exact(&mut buf).unwrap();
+//! ```
+//! 
+//! without that `write_block.commit()` line, this code would not compile as there still exist a write in progress.
+//! Additionally, you can only ever `split` once, so you'll only ever have a single reader and writer for each type.
 //!
 //! ## What we learned about psrdada
 //!
