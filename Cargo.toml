@@ -27,6 +27,7 @@ tracing = { version = "0.1", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt"] }
 
 [features]
+default = ["cuda"] #FIXME remove
 # Enables CUDA support
 cuda = ["psrdada-sys/cuda", "cuda-runtime-sys"]
 

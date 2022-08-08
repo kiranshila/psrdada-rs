@@ -1,9 +1,9 @@
 //! Implementations for the paired and split clients
 
 #[cfg(feature = "cuda")]
-use cuda_runtime_sys::{cudaError, cudaHostRegister};
+use cuda_runtime_sys::{cudaError, cudaHostRegister, cudaHostUnregister};
 use psrdada_sys::*;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
 use crate::errors::{PsrdadaError, PsrdadaResult};
 
@@ -135,8 +135,6 @@ impl DadaClient {
     /// Register the data buffer as GPU pinned memory (the header buffer is on the CPU (hopefully))
     /// We do this on construction and should be a nop for CPU memory
     fn cuda_register(&self) -> PsrdadaResult<()> {
-        use tracing::trace;
-
         unsafe {
             // Ensure that the data blocks are shmem locked
             if ipcbuf_lock(self.data_buf) != 0 {
@@ -167,7 +165,38 @@ impl DadaClient {
                     return Err(PsrdadaError::GpuError);
                 }
             }
-            debug!("Registered data block as GPU memory!");
+            debug!("Registered data buffer as GPU memory!");
+            Ok(())
+        }
+    }
+
+    #[tracing::instrument]
+    #[cfg(feature = "cuda")]
+    /// Unregister the data buffer as GPU pinned memory
+    /// We do this on construction and should be a nop for CPU memory
+    fn cuda_unregister(&self) -> PsrdadaResult<()> {
+        unsafe {
+            // Don't unregister buffers if they reside on the  device
+            // Device num is -1 if they are on the CPU (in which case we need to register them)
+            if ipcbuf_get_device(self.data_buf) >= 0 {
+                // Nothing to do!
+                return Ok(());
+            }
+
+            let nbufs = self.data_buf_count();
+
+            // Lock each data buffer block as CUDA memory
+            for buf_id in 0..nbufs {
+                let block = std::slice::from_raw_parts((*(self.data_buf)).buffer, nbufs)[buf_id];
+                // Check for cudaSuccess (0)
+                if let cudaError::cudaSuccess = cudaHostUnregister(block as *mut std::ffi::c_void) {
+                    trace!(buf_id, "Unregistered block as GPU memory");
+                } else {
+                    error!("Error unregistering GPU memory");
+                    return Err(PsrdadaError::GpuError);
+                }
+            }
+            debug!("Unegistered data buffer as GPU memory!");
             Ok(())
         }
     }
@@ -217,6 +246,9 @@ impl Drop for DadaClient {
                     error!("Error destroying header buffer");
                 }
             }
+        } else {
+            #[cfg(feature = "cuda")]
+            self.cuda_unregister().expect("Unregistering CUDA shouldn't fail");
         }
         // Now deal with the fact that we boxed these raw ptrs
         unsafe {
