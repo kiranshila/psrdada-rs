@@ -1,6 +1,6 @@
 [package]
 name = "psrdada-sys"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 links = "psrdada"
 authors = [ "Kiran Shila <me@kiranshila.com>" ]
