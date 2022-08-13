@@ -117,24 +117,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cuda-config"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ee74643f7430213a1a78320f88649de309b20b80818325575e393f848f79f5d"
-dependencies = [
- "glob",
-]
-
-[[package]]
-name = "cuda-runtime-sys"
-version = "0.3.0-alpha.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d070b301187fee3c611e75a425cf12247b7c75c09729dbdef95cb9cb64e8c39"
-dependencies = [
- "cuda-config",
-]
-
-[[package]]
 name = "either"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -405,12 +387,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0a7ae3ac2f1173085d398531c705756c94a4c56843785df85a60c1a0afac116"
 
 [[package]]
-name = "pkg-config"
-version = "0.3.25"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1df8c4ec4b0627e53bdf214615ad287367e482558cf84b109250b37464dc03ae"
-
-[[package]]
 name = "polonius-the-crab"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -429,7 +405,6 @@ dependencies = [
 name = "psrdada"
 version = "0.1.1"
 dependencies = [
- "cuda-runtime-sys",
  "env_logger",
  "lending-iterator",
  "nom",
@@ -447,7 +422,6 @@ dependencies = [
  "bindgen",
  "cc",
  "page_size",
- "pkg-config",
 ]
 
 [[package]]

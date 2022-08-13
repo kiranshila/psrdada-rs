@@ -16,9 +16,9 @@ pub struct DadaClientBuilder {
     buf_size: Option<u64>,
     num_headers: Option<u64>,
     header_size: Option<u64>,
-    cuda_device: Option<i32>,
     // Behavior flags
     lock: Option<bool>,
+    page: Option<bool>,
 }
 
 impl DadaClientBuilder {
@@ -31,7 +31,7 @@ impl DadaClientBuilder {
             num_headers: None,
             header_size: None,
             lock: None,
-            cuda_device: None,
+            page: None,
         }
     }
 
@@ -65,10 +65,9 @@ impl DadaClientBuilder {
         self
     }
 
-    #[cfg(feature = "cuda")]
-    /// The CUDA devices to pin the memory to
-    pub fn cuda_device(mut self, value: u32) -> Self {
-        self.cuda_device = Some(value as i32);
+    /// Page the resulting buffers in RAM
+    pub fn page(mut self, value: bool) -> Self {
+        self.page = Some(value);
         self
     }
 
@@ -83,15 +82,14 @@ impl DadaClientBuilder {
         let num_headers = self.num_headers.unwrap_or(8);
         let header_size = self.header_size.unwrap_or(page_size::get() as u64);
         let lock = self.lock.unwrap_or(false);
-        let cuda_device = self.cuda_device.unwrap_or(-1);
+        let page = self.page.unwrap_or(false);
 
         // Create data block, setting readers to 1 (a la mpsc)
-        // We'll use create_work to deal with cuda-able stuff
         debug!("Creating data ringbuffer");
         let data = Box::into_raw(Box::new(Default::default()));
         unsafe {
-            // Safety: Catch the error
-            if ipcbuf_create_work(data, self.key, num_bufs, buf_size, 1, cuda_device) != 0 {
+            // Safety: Catch the error, no cuda device
+            if ipcbuf_create_work(data, self.key, num_bufs, buf_size, 1, -1) != 0 {
                 error!("Error creating data ringbuffer");
                 return Err(PsrdadaError::DadaInitError);
             }
@@ -145,6 +143,38 @@ impl DadaClientBuilder {
             }
         }
 
+        // Page if required, teardown everything if we fail
+        if page {
+            debug!("Paging both ring and data buffers in RAM");
+            unsafe {
+                if ipcbuf_page(data) != 0 {
+                    error!("Error locking data rinngbuffer");
+                    if ipcbuf_destroy(data) != 0 {
+                        error!("Error destroying data ringbuffer");
+                        return Err(PsrdadaError::DadaDestroyError);
+                    }
+                    if ipcbuf_destroy(header) != 0 {
+                        error!("Error destroying header ringbuffer");
+                        return Err(PsrdadaError::DadaDestroyError);
+                    }
+                    return Err(PsrdadaError::DadaShmemLockError);
+                }
+
+                if ipcbuf_page(header) != 0 {
+                    error!("Error locking header ringbuffer");
+                    if ipcbuf_destroy(data) != 0 {
+                        error!("Error destroying data ringbuffer");
+                        return Err(PsrdadaError::DadaDestroyError);
+                    }
+                    if ipcbuf_destroy(header) != 0 {
+                        error!("Error destroying header ringbuffer");
+                        return Err(PsrdadaError::DadaDestroyError);
+                    }
+                    return Err(PsrdadaError::DadaShmemLockError);
+                }
+            }
+        }
+
         // Now we construct our client with these buffers we created
         let client = DadaClient::build(data, header)?;
         // Return built result
@@ -163,12 +193,5 @@ mod tests {
     fn test_construct_client() {
         let key = next_key();
         let _client = DadaClientBuilder::new(key).build().unwrap();
-    }
-
-    #[test]
-    #[cfg(feature = "cuda")]
-    fn test_construct_cuda_client() {
-        let key = next_key();
-        let _client = DadaClientBuilder::new(key).cuda_device(0).build().unwrap();
     }
 }

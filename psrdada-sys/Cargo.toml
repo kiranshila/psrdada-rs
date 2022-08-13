@@ -16,11 +16,7 @@ categories = ["encoding","parser-implementations"]
 
 [build-dependencies]
 bindgen = "0.60"
-pkg-config = "0.3"
 cc = { version = "1.0", features = ["parallel"] }
 
 [dev-dependencies]
 page_size = "0.4"
-
-[features]
-cuda = []

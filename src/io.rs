@@ -450,25 +450,4 @@ mod tests {
         let mut reader = hc.reader();
         assert_eq!(bytes, reader.next().unwrap().read_block());
     }
-
-    // #[test]
-    // #[cfg(feature = "cuda")]
-    // fn test_cuda() {
-    //     let key = 0xb00b;
-    //     let mut client = DadaClientBuilder::new(key)
-    //         .buf_size(67108864)
-    //         .cuda_device(0)
-    //         .build()
-    //         .unwrap();
-    //     let (_, mut dc) = client.split();
-
-    //     let bytes = vec![127u8; 67108864];
-    //     let mut writer = dc.writer();
-    //     let mut hb = writer.next().unwrap();
-    //     assert_eq!(4, hb.write(&bytes).unwrap());
-    //     hb.commit();
-
-    //     let mut reader = dc.reader();
-    //     assert_eq!(bytes, reader.next().unwrap().read_block());
-    // }
 }

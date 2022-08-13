@@ -29,27 +29,11 @@ fn main() {
 
     c.warnings(false);
 
-    // Use pkg_config to find CUDA
-    let cuda = if cfg!(feature = "cuda") {
-        Some(pkg_config::probe_library("cuda").unwrap())
-    } else {
-        None
-    };
-
-    // Use CUDA - can we gate this here to hardware?
-    #[cfg(feature = "cuda")]
-    c.cuda(true)
-        .flag("-cudart=static")
-        .flag("-allow-unsupported-compiler")
-        .flag("-gencode")
-        .flag("arch=compute_50,code=sm_50");
-
     let mut config_h = fs::File::create(config_dir.join("config.h")).unwrap();
     // Are these all decent assumptions to make?
     write!(
         config_h,
         r#"
-        {}
         #define HAVE_ALARM 1
         #define HAVE_ARPA_INET_H 1
         #define HAVE_DLFCN_H 1
@@ -112,11 +96,6 @@ fn main() {
         #define TIME_WITH_SYS_TIME 1
         #define VERSION "1.0"
         "#,
-        if cfg!(feature = "cuda") {
-            "#define HAVE_CUDA 1"
-        } else {
-            ""
-        }
     )
     .unwrap();
 
@@ -156,12 +135,6 @@ fn main() {
         .file("vendor/src/stopwatch.c")
         .file("vendor/src/tmutil.c");
 
-    #[cfg(feature = "cuda")]
-    c.file("vendor/src/dada_cuda.cu")
-        .file("vendor/src/ipcbuf_cuda.cu")
-        .file("vendor/src/ipcio_cuda.cu")
-        .file("vendor/src/ipcutil_cuda.cu");
-
     // Compile
     c.compile("psrdada");
 
@@ -172,7 +145,7 @@ fn main() {
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
     // the resulting bindings.
-    let mut binding_gen = bindgen::Builder::default()
+    let bindings = bindgen::Builder::default()
         // The input header we would like to generate
         // bindings for.
         .header("wrapper.h")
@@ -180,20 +153,9 @@ fn main() {
         // included header files changed.
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         // Tell bindgen about the structs which have mutexes, so they don't `copy`
-        .no_copy("multilog_t");
-
-    if cfg!(feature = "cuda") {
-        binding_gen = match cuda {
-            Some(c) => binding_gen.clang_args(
-                c.include_paths
-                    .into_iter()
-                    .map(|p| format!("-I{}", p.display())),
-            ),
-            None => panic!("The CUDA feature is enabled, but pkg-config can't find it"),
-        };
-    }
-
-    let bindings = binding_gen.generate().expect("Unable to generate bindings");
+        .no_copy("multilog_t")
+        .generate()
+        .expect("Unable to generate bindings");
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());

@@ -31,7 +31,6 @@
 //!
 //! We are building and linking the psrdada library as part of the build of this crate, which requires you have a working C compiler.
 //! See the [cc](https://docs.rs/cc/latest/cc/) crate for more details.
-//! If you want CUDA support (enabled with the `cuda` feature), you need CUDA installed.
 //!
 //! ## Example
 //!

@@ -1,9 +1,7 @@
 //! Implementations for the paired and split clients
 
-#[cfg(feature = "cuda")]
-use cuda_runtime_sys::{cudaError, cudaHostRegister, cudaHostUnregister};
 use psrdada_sys::*;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, warn};
 
 use crate::errors::{PsrdadaError, PsrdadaResult};
 
@@ -63,9 +61,6 @@ impl DadaClient {
             header_buf,
             allocated: false,
         };
-        // Pin memory as CUDA memory (if it is actually CUDA memory)
-        #[cfg(feature = "cuda")]
-        s.cuda_register()?;
         Ok(s)
     }
 
@@ -131,77 +126,6 @@ impl DadaClient {
     }
 
     #[tracing::instrument]
-    #[cfg(feature = "cuda")]
-    /// Register the data buffer as GPU pinned memory (the header buffer is on the CPU (hopefully))
-    /// We do this on construction and should be a nop for CPU memory
-    fn cuda_register(&self) -> PsrdadaResult<()> {
-        unsafe {
-            // Ensure that the data blocks are shmem locked
-            if ipcbuf_lock(self.data_buf) != 0 {
-                warn!("Error locking data buf in shared memory - try rerunning as su");
-                return Ok(());
-            }
-
-            // Don't register buffers if they reside on the  device
-            // Device num is -1 if they are on the CPU (in which case we need to register them)
-            if ipcbuf_get_device(self.data_buf) >= 0 {
-                // Nothing to do!
-                return Ok(());
-            }
-
-            let bufsz = self.data_buf_size();
-            let nbufs = self.data_buf_count();
-
-            // Lock each data buffer block as CUDA memory
-            for buf_id in 0..nbufs {
-                let block = std::slice::from_raw_parts((*(self.data_buf)).buffer, nbufs)[buf_id];
-                // Check for cudaSuccess (0)
-                if let cudaError::cudaSuccess =
-                    cudaHostRegister(block as *mut std::ffi::c_void, bufsz, 0)
-                {
-                    trace!(buf_id, "Registered block as GPU memory");
-                } else {
-                    error!("Error registering GPU memory");
-                    return Err(PsrdadaError::GpuError);
-                }
-            }
-            debug!("Registered data buffer as GPU memory!");
-            Ok(())
-        }
-    }
-
-    #[tracing::instrument]
-    #[cfg(feature = "cuda")]
-    /// Unregister the data buffer as GPU pinned memory
-    /// We do this on construction and should be a nop for CPU memory
-    fn cuda_unregister(&self) -> PsrdadaResult<()> {
-        unsafe {
-            // Don't unregister buffers if they reside on the  device
-            // Device num is -1 if they are on the CPU (in which case we need to register them)
-            if ipcbuf_get_device(self.data_buf) >= 0 {
-                // Nothing to do!
-                return Ok(());
-            }
-
-            let nbufs = self.data_buf_count();
-
-            // Lock each data buffer block as CUDA memory
-            for buf_id in 0..nbufs {
-                let block = std::slice::from_raw_parts((*(self.data_buf)).buffer, nbufs)[buf_id];
-                // Check for cudaSuccess (0)
-                if let cudaError::cudaSuccess = cudaHostUnregister(block as *mut std::ffi::c_void) {
-                    trace!(buf_id, "Unregistered block as GPU memory");
-                } else {
-                    error!("Error unregistering GPU memory");
-                    return Err(PsrdadaError::GpuError);
-                }
-            }
-            debug!("Unegistered data buffer as GPU memory!");
-            Ok(())
-        }
-    }
-
-    #[tracing::instrument]
     /// Reset the state of everything
     pub fn reset(&mut self) -> PsrdadaResult<()> {
         unsafe {
@@ -246,9 +170,6 @@ impl Drop for DadaClient {
                     error!("Error destroying header buffer");
                 }
             }
-        } else {
-            #[cfg(feature = "cuda")]
-            self.cuda_unregister().expect("Unregistering CUDA shouldn't fail");
         }
         // Now deal with the fact that we boxed these raw ptrs
         unsafe {
@@ -286,5 +207,15 @@ mod tests {
         assert_eq!(client.data_buf_count(), 1);
         assert_eq!(client.header_buf_count(), 4);
         assert_eq!(client.header_buf_size(), 64);
+    }
+
+    #[test]
+    fn test_build_lock_page() {
+        let key = next_key();
+        let _client = DadaClientBuilder::new(key)
+            .lock(true)
+            .page(true)
+            .build()
+            .unwrap();
     }
 }

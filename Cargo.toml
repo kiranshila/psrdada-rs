@@ -18,18 +18,12 @@ page_size = "0.4"
 tracing = "0.1"
 lending-iterator = "0.1"
 nom = "7"
-cuda-runtime-sys = { version = "0.3.0-alpha.1", optional = true }
 
 [dev-dependencies]
 test-log = { version = "0.2", features = ["trace"] }
 env_logger = "0.9"
 tracing = { version = "0.1", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt"] }
-
-[features]
-default = ["cuda"] #FIXME remove
-# Enables CUDA support
-cuda = ["psrdada-sys/cuda", "cuda-runtime-sys"]
 
 [workspace]
 members = ["psrdada-sys"]
