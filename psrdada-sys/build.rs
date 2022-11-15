@@ -14,7 +14,7 @@ fn main() {
 
     println!(
         "cargo:include={}",
-        env::join_paths(&[&config_dir, &vendor])
+        env::join_paths([&config_dir, &vendor])
             .unwrap()
             .to_str()
             .unwrap()
