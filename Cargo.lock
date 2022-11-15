@@ -350,7 +350,7 @@ dependencies = [
 
 [[package]]
 name = "psrdada"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "env_logger",
  "lending-iterator",
