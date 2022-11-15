@@ -69,12 +69,12 @@ impl DadaClient {
     fn connect(key: i32) -> PsrdadaResult<(*mut ipcbuf_t, *mut ipcbuf_t)> {
         debug!(key, "Connecting to dada buffer");
         unsafe {
-            let data_buf = Box::into_raw(Box::new(Default::default()));
+            let data_buf = Box::into_raw(Box::default());
             if ipcbuf_connect(data_buf, key) != 0 {
                 error!(key, "Could not connect to data buffer");
                 return Err(PsrdadaError::DadaInitError);
             }
-            let header_buf = Box::into_raw(Box::new(Default::default()));
+            let header_buf = Box::into_raw(Box::default());
             if ipcbuf_connect(header_buf, key + 1) != 0 {
                 error!(key, "Could not connect to header buffer");
                 return Err(PsrdadaError::DadaInitError);
