@@ -86,7 +86,7 @@ impl DadaClientBuilder {
 
         // Create data block, setting readers to 1 (a la mpsc)
         debug!("Creating data ringbuffer");
-        let data = Box::into_raw(Box::new(Default::default()));
+        let data = Box::into_raw(Box::default());
         unsafe {
             // Safety: Catch the error, no cuda device
             if ipcbuf_create_work(data, self.key, num_bufs, buf_size, 1, -1) != 0 {
@@ -97,7 +97,7 @@ impl DadaClientBuilder {
 
         // Create header block
         debug!("Creating header ringbuffer");
-        let header = Box::into_raw(Box::new(Default::default()));
+        let header = Box::into_raw(Box::default());
         unsafe {
             // Safety: Catch the Error, destroy data if we fail so we don't leak memory
             if ipcbuf_create(header, self.key + 1, num_headers, header_size, 1) != 0 {
