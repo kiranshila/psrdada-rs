@@ -122,7 +122,7 @@ impl HeaderClient<'_> {
     /// end up with bad bytes in the end.
     pub unsafe fn push_header(&mut self, header: &HashMap<String, String>) -> PsrdadaResult<usize> {
         let bytes = header_to_bytes(header);
-        let bufsz = ipcbuf_get_bufsz(*self.buf);
+        let bufsz = ipcbuf_get_bufsz(self.buf as *mut _);
         let mut writer = self.writer();
         // Create a buffer of zeros, then copy over our header
         let mut whole_buffer = vec![0u8; bufsz as usize];

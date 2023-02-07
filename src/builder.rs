@@ -176,7 +176,8 @@ impl DadaClientBuilder {
         }
 
         // Now we construct our client with these buffers we created
-        let client = DadaClient::build(data, header)?;
+        // Safety: We just constructed these pointers and haven't shared them
+        let client = unsafe { DadaClient::build(data, header) }?;
         // Return built result
         Ok(client)
     }

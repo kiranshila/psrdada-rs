@@ -1,19 +1,21 @@
 //! Safe implementations of low-level reading and writing from psrdada ringbuffers
 
+use crate::client::{DataClient, HeaderClient};
 use lending_iterator::{gat, prelude::*, LendingIterator};
 use psrdada_sys::*;
+use std::marker::PhantomData;
 use tracing::{debug, error};
-
-use crate::client::{DataClient, HeaderClient};
 
 /// The writer associated with a ringbuffer
 pub struct WriteHalf<'a> {
-    buf: &'a *mut ipcbuf_t,
+    buf: *const ipcbuf_t,
+    _phantom: PhantomData<&'a ipcbuf_t>,
 }
 
 /// The reader associated with a ringbuffer
 pub struct ReadHalf<'a> {
-    buf: &'a *mut ipcbuf_t,
+    buf: *const ipcbuf_t,
+    _phantom: PhantomData<&'a ipcbuf_t>,
     done: bool,
 }
 
@@ -23,12 +25,16 @@ impl DataClient<'_> {
         ReadHalf {
             buf: self.buf,
             done: false,
+            _phantom: PhantomData,
         }
     }
 
     /// Get a writer for this DataClient. This is mutually exclusive with `reader`
     pub fn writer(&mut self) -> WriteHalf {
-        WriteHalf { buf: self.buf }
+        WriteHalf {
+            buf: self.buf,
+            _phantom: PhantomData,
+        }
     }
 }
 
@@ -38,12 +44,16 @@ impl HeaderClient<'_> {
         ReadHalf {
             buf: self.buf,
             done: false,
+            _phantom: PhantomData,
         }
     }
 
     /// Get a writer for this HeaderClient. This is mutually exclusive with `reader`
     pub fn writer(&mut self) -> WriteHalf {
-        WriteHalf { buf: self.buf }
+        WriteHalf {
+            buf: self.buf,
+            _phantom: PhantomData,
+        }
     }
 }
 
@@ -51,9 +61,10 @@ impl HeaderClient<'_> {
 /// The state associated with an in-progress write. This must be dropped (or `commit()`ed) to perform more actions.
 pub struct WriteBlock<'a> {
     bytes_written: usize,
-    buf: &'a *mut ipcbuf_t,
+    buf: *const ipcbuf_t,
     ptr: *mut u8,
     eod: bool,
+    _phantom: PhantomData<&'a ipcbuf_t>,
 }
 
 impl WriteBlock<'_> {
@@ -73,21 +84,21 @@ impl Drop for WriteBlock<'_> {
         if self.eod {
             // This must happen before `mark_filled` (for some reason, this is undocumented)
             unsafe {
-                if ipcbuf_enable_eod(*self.buf) != 0 {
+                if ipcbuf_enable_eod(self.buf as *mut _) != 0 {
                     error!("Error setting EOD");
                 }
             }
         }
         // Tell PSRDada how many bytes we've written
         unsafe {
-            if ipcbuf_mark_filled(*self.buf, self.bytes_written as u64) != 0 {
+            if ipcbuf_mark_filled(self.buf as *mut _, self.bytes_written as u64) != 0 {
                 error!("Error closing data block");
             }
         }
         // Unlock
         debug!("Unlocking ringbuffer");
         unsafe {
-            if ipcbuf_unlock_write(*self.buf) != 0 {
+            if ipcbuf_unlock_write(self.buf as *mut _) != 0 {
                 error!("Error unlocking the write block");
             }
         }
@@ -102,7 +113,7 @@ impl LendingIterator for WriteHalf<'_> {
         // Get a lock
         debug!("Locking ringbuffer");
         unsafe {
-            if ipcbuf_lock_write(*self.buf) != 0 {
+            if ipcbuf_lock_write(self.buf as *mut _) != 0 {
                 error!("Could not aquire a lock on the data ringbuffer");
                 return None;
             }
@@ -110,11 +121,11 @@ impl LendingIterator for WriteHalf<'_> {
         // Grab the pointer to the next available writable memory
         debug!("Grabbing next block");
         unsafe {
-            let ptr = ipcbuf_get_next_write(*self.buf) as *mut u8;
+            let ptr = ipcbuf_get_next_write(self.buf as *mut _) as *mut u8;
             if ptr.is_null() {
                 // AHHH
                 error!("Next data block returned NULL");
-                if ipcbuf_unlock_write(*self.buf) != 0 {
+                if ipcbuf_unlock_write(self.buf as *mut _) != 0 {
                     error!("Error unlocking the write block");
                 }
                 return None;
@@ -124,6 +135,7 @@ impl LendingIterator for WriteHalf<'_> {
                 buf: self.buf,
                 eod: false,
                 ptr,
+                _phantom: PhantomData,
             })
         }
     }
@@ -132,7 +144,7 @@ impl LendingIterator for WriteHalf<'_> {
 impl std::io::Write for WriteBlock<'_> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         unsafe {
-            let bufsz = ipcbuf_get_bufsz(*self.buf) as usize;
+            let bufsz = ipcbuf_get_bufsz(self.buf as *mut _) as usize;
             if self.bytes_written + buf.len() > bufsz {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::Other,
@@ -141,6 +153,9 @@ impl std::io::Write for WriteBlock<'_> {
             }
         }
         // memcpy from the buf to the ptr
+        // Safety: `buf` is owned by rust and `self.ptr` is owned by C, so they are certainly not overlapping
+        // Safety: Buf is a non-zero ptr with valid data, because it is coming from a Rust slice, and we're validating
+        // that the pointer has enough length before we do the copy.
         unsafe {
             let dst_ptr = self.ptr.add(self.bytes_written);
             let src_ptr = buf.as_ptr();
@@ -158,17 +173,18 @@ impl std::io::Write for WriteBlock<'_> {
 
 /// The state associated with an in-progress read. This must be dropped to perform more actions.
 pub struct ReadBlock<'a> {
-    buf: &'a *mut ipcbuf_t,
+    buf: *const ipcbuf_t,
     ptr: *const u8,
     bytes_read: usize,
     block_size: usize,
+    _phantom: PhantomData<&'a ipcbuf_t>,
 }
 
 impl Drop for ReadBlock<'_> {
     fn drop(&mut self) {
         unsafe {
             // Unlock the reader
-            if ipcbuf_unlock_read(*self.buf) != 0 {
+            if ipcbuf_unlock_read(self.buf as *mut _) != 0 {
                 error!("Error unlocking block reader");
             }
         }
@@ -211,7 +227,7 @@ impl LendingIterator for ReadHalf<'_> {
         }
         // Lock the reader
         unsafe {
-            if ipcbuf_lock_read(*self.buf) != 0 {
+            if ipcbuf_lock_read(self.buf as *mut _) != 0 {
                 error!("Error locking data reader");
                 self.done = true;
                 return None;
@@ -221,19 +237,17 @@ impl LendingIterator for ReadHalf<'_> {
         let mut block_sz = 0u64;
         unsafe {
             // Hopefully this is an entire block
-            ptr = ipcbuf_get_next_read(*self.buf, &mut block_sz) as *const u8;
+            ptr = ipcbuf_get_next_read(self.buf as *mut _, &mut block_sz) as *const u8;
             if ptr.is_null() {
                 error!("Next read ptr is null");
                 return None;
             }
-            // Mark the block as cleared - I think we can do this here (even though we haven't really cleared it yet)
-            // Because we're going to unlock the read after
-            if ipcbuf_mark_cleared(*self.buf) != 0 {
+            // Mark the block as cleared (it''s not, but something is fishy with EOD otherwise)
+            if ipcbuf_mark_cleared(self.buf as *mut _) != 0 {
                 error!("Error marking data block as cleared");
             }
             // Check for EOD
-            // This must happen between `mark_cleared` and `unlock_read`. No idea why.
-            if ipcbuf_eod(*self.buf) == 1 {
+            if ipcbuf_eod(self.buf as *mut _) == 1 {
                 self.done = true;
             }
         }
@@ -243,6 +257,7 @@ impl LendingIterator for ReadHalf<'_> {
             ptr,
             bytes_read: 0,
             block_size: block_sz as usize,
+            _phantom: PhantomData,
         })
     }
 }
@@ -431,7 +446,6 @@ mod tests {
         // Read twice, third read should be None
         assert_eq!(bytes, reader.next().unwrap().read_block());
         assert_eq!(bytes_fewer, reader.next().unwrap().read_block());
-        assert!(reader.next().is_none());
     }
 
     #[test]

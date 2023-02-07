@@ -3,17 +3,17 @@ name = "psrdada"
 version = "0.2.4"
 edition = "2021"
 rust-version = "1.57.0"
-authors = [ "Kiran Shila <me@kiranshila.com>" ]
+authors = ["Kiran Shila <me@kiranshila.com>"]
 license = "Apache-2.0 OR MIT"
 homepage = "https://github.com/kiranshila/psrdada-rs"
 repository = "https://github.com/kiranshila/psrdada-rs"
 description = "A rusty wrapper for the psrdada radio astronomy library"
 readme = "README.md"
 keywords = ["astronomy", "protocol", "telescope"]
-categories = ["encoding","parser-implementations"]
+categories = ["encoding", "parser-implementations"]
 
 [dependencies]
-psrdada-sys = {path = "./psrdada-sys", version = "0.2.0"}
+psrdada-sys = { path = "./psrdada-sys", version = "0.2.0" }
 page_size = "0.4"
 tracing = "0.1"
 lending-iterator = "0.1"
@@ -23,7 +23,10 @@ nom = "7"
 test-log = { version = "0.2", features = ["trace"] }
 env_logger = "0.9"
 tracing = { version = "0.1", default-features = false }
-tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "env-filter",
+    "fmt",
+] }
 
 [workspace]
 members = ["psrdada-sys"]
