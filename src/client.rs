@@ -1,9 +1,11 @@
 //! Implementations for the paired and split clients
 
-use crate::errors::{PsrdadaError, PsrdadaResult};
-use psrdada_sys::*;
 use std::marker::PhantomData;
+
+use psrdada_sys::*;
 use tracing::{debug, error, warn};
+
+use crate::errors::{PsrdadaError, PsrdadaResult};
 
 #[derive(Debug)]
 /// The struct that stores the Header + Data ringbuffers

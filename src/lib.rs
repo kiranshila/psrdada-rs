@@ -52,7 +52,7 @@
 //! // Unsafe as we're not checking if the keys and values are valid
 //! unsafe { client.push_header(&header).unwrap() };
 //! ```
-//!
+//! 
 //! Beyond this, you can `split` the `DadaClient` into separate clients for headers and data, which can then be read and written to/from.
 //!
 //! ## Safety
@@ -95,7 +95,7 @@
 //! let mut buf = [0u8; 10];
 //! read_block.read_exact(&mut buf).unwrap();
 //! ```
-//!
+//! 
 //! without that `write_block.commit()` line, this code would not compile as there still exist a write in progress.
 //! Additionally, you can only ever `split` once, so you'll only ever have a single reader and writer for each type.
 //!

@@ -1,10 +1,12 @@
 //! Safe implementations of low-level reading and writing from psrdada ringbuffers
 
-use crate::client::{DataClient, HeaderClient};
+use std::marker::PhantomData;
+
 use lending_iterator::{gat, prelude::*, LendingIterator};
 use psrdada_sys::*;
-use std::marker::PhantomData;
 use tracing::{debug, error};
+
+use crate::client::{DataClient, HeaderClient};
 
 /// The writer associated with a ringbuffer
 pub struct WriteHalf<'a> {
