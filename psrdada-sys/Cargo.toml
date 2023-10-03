@@ -1,6 +1,6 @@
 [package]
 name = "psrdada-sys"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 links = "psrdada"
 authors = [ "Kiran Shila <me@kiranshila.com>" ]
@@ -15,7 +15,7 @@ categories = ["encoding","parser-implementations"]
 
 
 [build-dependencies]
-bindgen = "0.61"
+bindgen = "0.68"
 cc = { version = "1.0", features = ["parallel"] }
 
 [dev-dependencies]
