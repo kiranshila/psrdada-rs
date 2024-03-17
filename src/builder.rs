@@ -73,7 +73,8 @@ impl DadaClientBuilder {
 
     #[tracing::instrument]
     /// Builder for DadaClient
-    /// Buffer size will default to 4x of 128*Page Size
+    ///
+    /// Buffer size will default to 4x of 128*Page Size.
     /// Header size will default to 8x of Page Size
     pub fn build(self) -> PsrdadaResult<DadaClient> {
         // Unpack the things we need, defaulting as necessary

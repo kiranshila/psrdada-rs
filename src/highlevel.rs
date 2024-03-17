@@ -2,10 +2,9 @@
 
 use std::io::Write;
 
-use lending_iterator::LendingIterator;
-
 use crate::{
     client::DadaClient,
+    dada_iter::DadaIterator,
     errors::{PsrdadaError, PsrdadaResult},
     io::{ReadHalf, WriteHalf},
 };
@@ -51,9 +50,7 @@ impl DadaClient {
 
 #[cfg(test)]
 mod tests {
-    use lending_iterator::LendingIterator;
-
-    use crate::{builder::DadaClientBuilder, tests::next_key};
+    use crate::{builder::DadaClientBuilder, dada_iter::DadaIterator, tests::next_key};
 
     #[test]
     fn test_push() {

@@ -199,7 +199,7 @@ mod tests {
         let hdr = b"FOO\tBAR # A comment\nBAZ   \tquuz123#morecomment__\n\nbEanS __RICE__";
         let (remaining, pairs) = header(hdr).unwrap();
 
-        let p1 = pairs.get(0).unwrap();
+        let p1 = pairs.first().unwrap();
         assert_eq!(b"FOO", p1.0);
         assert_eq!(b"BAR", p1.1);
 
@@ -219,7 +219,7 @@ mod tests {
         let hdr = b"foo bar\nbaz buzz#foob\n\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
         let (_, pairs) = header(hdr).unwrap();
 
-        let p1 = pairs.get(0).unwrap();
+        let p1 = pairs.first().unwrap();
         assert_eq!(b"foo", p1.0);
         assert_eq!(b"bar", p1.1);
 

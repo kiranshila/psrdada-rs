@@ -16,7 +16,6 @@ categories = ["encoding", "parser-implementations"]
 psrdada-sys = { path = "./psrdada-sys", version = "0.4.0" }
 page_size = "0.6"
 tracing = "0.1"
-lending-iterator = "0.1"
 nom = "7"
 
 [dev-dependencies]

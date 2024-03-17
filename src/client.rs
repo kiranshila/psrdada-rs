@@ -64,10 +64,16 @@ impl DadaClient {
         Ok(s)
     }
 
-    #[tracing::instrument]
+    #[deprecated(note = "This wasn't an obvious name, use `DataClient::connect` instead")]
     /// Construct a new DadaClient and connect to existing ring buffers
     pub fn new(key: i32) -> PsrdadaResult<Self> {
-        let (data_buf, header_buf) = Self::connect(key)?;
+        Self::connect(key)
+    }
+
+    #[tracing::instrument]
+    /// Construct a new DadaClient by connecting to existing ring buffers
+    pub fn connect(key: i32) -> PsrdadaResult<Self> {
+        let (data_buf, header_buf) = Self::connect_both(key)?;
         let s = Self {
             data_buf,
             header_buf,
@@ -78,7 +84,7 @@ impl DadaClient {
 
     #[tracing::instrument]
     /// Internal method to actually build and connect
-    fn connect(key: i32) -> PsrdadaResult<(*const ipcbuf_t, *const ipcbuf_t)> {
+    fn connect_both(key: i32) -> PsrdadaResult<(*const ipcbuf_t, *const ipcbuf_t)> {
         debug!(key, "Connecting to dada buffer");
         unsafe {
             let data_buf = Box::into_raw(Box::default());
@@ -203,7 +209,7 @@ mod tests {
     fn test_connect() {
         let key = next_key();
         let _client = DadaClientBuilder::new(key).build().unwrap();
-        let _connected = DadaClient::new(key).unwrap();
+        let _connected = DadaClient::connect(key).unwrap();
     }
 
     #[test]

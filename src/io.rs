@@ -2,11 +2,12 @@
 
 use std::marker::PhantomData;
 
-use lending_iterator::{gat, prelude::*, LendingIterator};
+use crate::{
+    client::{DataClient, HeaderClient},
+    dada_iter::DadaIterator,
+};
 use psrdada_sys::*;
 use tracing::{debug, error};
-
-use crate::client::{DataClient, HeaderClient};
 
 /// The writer associated with a ringbuffer
 pub struct WriteHalf<'a> {
@@ -107,11 +108,10 @@ impl Drop for WriteBlock<'_> {
     }
 }
 
-#[gat]
-impl LendingIterator for WriteHalf<'_> {
+impl DadaIterator for WriteHalf<'_> {
     type Item<'next> = WriteBlock<'next>;
 
-    fn next(&'_ mut self) -> Option<Self::Item<'_>> {
+    fn next<'next>(&mut self) -> Option<Self::Item<'next>> {
         // Get a lock
         debug!("Locking ringbuffer");
         unsafe {
@@ -167,7 +167,7 @@ impl std::io::Write for WriteBlock<'_> {
         Ok(buf.len())
     }
 
-    // Not relevant here
+    // Not relevant here because the memory is unbuffered
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
@@ -219,11 +219,10 @@ impl ReadBlock<'_> {
     }
 }
 
-#[gat]
-impl LendingIterator for ReadHalf<'_> {
+impl DadaIterator for ReadHalf<'_> {
     type Item<'next> = ReadBlock<'next>;
 
-    fn next(&'_ mut self) -> Option<Self::Item<'_>> {
+    fn next<'next>(&mut self) -> Option<Self::Item<'next>> {
         if self.done {
             return None;
         }
@@ -266,12 +265,11 @@ impl LendingIterator for ReadHalf<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        builder::DadaClientBuilder, client::DadaClient, dada_iter::DadaIterator, tests::next_key,
+    };
     use std::io::Write;
-
-    use lending_iterator::LendingIterator;
     use test_log::test;
-
-    use crate::{builder::DadaClientBuilder, client::DadaClient, tests::next_key};
 
     #[test]
     fn test_write() {
@@ -322,7 +320,7 @@ mod tests {
 
         // Spawn a reader thread, which will block until the data shows up
         let handle = std::thread::spawn(move || {
-            let mut client = DadaClient::new(key).unwrap();
+            let mut client = DadaClient::connect(key).unwrap();
             let (_, mut dc) = client.split();
             let mut reader = dc.reader();
             assert_eq!([0u8, 1u8, 2u8, 3u8], reader.next().unwrap().read_block());

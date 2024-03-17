@@ -29,7 +29,9 @@
         pkgs = import nixpkgs { inherit system overlays; };
         nativeBuildInputs = with pkgs; [ rustPlatform.bindgenHook pkg-config ];
         buildInputs = with pkgs; [
-          rust-bin.stable.latest.default
+          (rust-bin.stable.latest.default.override {
+              extensions = ["rust-src" "rust-analyzer"];
+            })
           psrdada.packages.${system}.default
         ];
       in with pkgs; {
