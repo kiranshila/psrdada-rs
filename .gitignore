@@ -3,3 +3,5 @@ psrdada-sys/target
 psrdada-sys/vendor/.ccls-cache
 .ccls-cache
 .vscode/
+.direnv
+result

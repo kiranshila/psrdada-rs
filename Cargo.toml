@@ -1,6 +1,6 @@
 [package]
 name = "psrdada"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 rust-version = "1.57.0"
 authors = ["Kiran Shila <me@kiranshila.com>"]
@@ -13,8 +13,8 @@ keywords = ["astronomy", "protocol", "telescope"]
 categories = ["encoding", "parser-implementations"]
 
 [dependencies]
-psrdada-sys = { path = "./psrdada-sys", version = "0.3.1" }
-page_size = "0.4"
+psrdada-sys = { path = "./psrdada-sys", version = "0.4.0" }
+page_size = "0.6"
 tracing = "0.1"
 lending-iterator = "0.1"
 nom = "7"
