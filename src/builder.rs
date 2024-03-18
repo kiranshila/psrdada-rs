@@ -4,7 +4,7 @@ use psrdada_sys::*;
 use tracing::{debug, error, warn};
 
 use crate::{
-    client::DadaClient,
+    client::HduClient,
     errors::{PsrdadaError, PsrdadaResult},
 };
 
@@ -76,7 +76,7 @@ impl DadaClientBuilder {
     ///
     /// Buffer size will default to 4x of 128*Page Size.
     /// Header size will default to 8x of Page Size
-    pub fn build(self) -> PsrdadaResult<DadaClient> {
+    pub fn build(self) -> PsrdadaResult<HduClient> {
         // Unpack the things we need, defaulting as necessary
         let num_bufs = self.num_bufs.unwrap_or(4);
         let buf_size = self.buf_size.unwrap_or((page_size::get() as u64) * 128);
@@ -178,7 +178,7 @@ impl DadaClientBuilder {
 
         // Now we construct our client with these buffers we created
         // Safety: We just constructed these pointers and haven't shared them
-        let client = unsafe { DadaClient::build(data, header) }?;
+        let client = unsafe { HduClient::build(data, header) }?;
         // Return built result
         Ok(client)
     }

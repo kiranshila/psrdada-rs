@@ -11,6 +11,7 @@ pub enum PsrdadaError {
     DadaReadError,
     DadaResetError,
     DadaEodError,
+    DadaSodError,
     DadaWriteError,
     DadaShmemLockError,
     UTF8Error,

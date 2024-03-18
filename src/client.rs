@@ -9,7 +9,7 @@ use crate::errors::{PsrdadaError, PsrdadaResult};
 
 #[derive(Debug)]
 /// The struct that stores the Header + Data ringbuffers
-pub struct DadaClient {
+pub struct HduClient {
     allocated: bool,
     pub(crate) data_buf: *const ipcbuf_t,
     pub(crate) header_buf: *const ipcbuf_t,
@@ -28,7 +28,7 @@ pub struct DataClient<'a> {
 }
 
 // Splitting borrows
-impl DadaClient {
+impl HduClient {
     /// Split the DadaClient into header and data clients
     pub fn split(&mut self) -> (HeaderClient, DataClient) {
         (
@@ -44,7 +44,7 @@ impl DadaClient {
     }
 }
 
-impl DadaClient {
+impl HduClient {
     #[tracing::instrument]
     /// Internal method used by builder (we know we allocated it)
     /// # Safety
@@ -64,12 +64,6 @@ impl DadaClient {
         Ok(s)
     }
 
-    #[deprecated(note = "This wasn't an obvious name, use `DataClient::connect` instead")]
-    /// Construct a new DadaClient and connect to existing ring buffers
-    pub fn new(key: i32) -> PsrdadaResult<Self> {
-        Self::connect(key)
-    }
-
     #[tracing::instrument]
     /// Construct a new DadaClient by connecting to existing ring buffers
     pub fn connect(key: i32) -> PsrdadaResult<Self> {
@@ -87,6 +81,7 @@ impl DadaClient {
     fn connect_both(key: i32) -> PsrdadaResult<(*const ipcbuf_t, *const ipcbuf_t)> {
         debug!(key, "Connecting to dada buffer");
         unsafe {
+            // Boxing here is the same as `unique_ptr` from C++
             let data_buf = Box::into_raw(Box::default());
             if ipcbuf_connect(data_buf, key) != 0 {
                 error!(key, "Could not connect to data buffer");
@@ -174,7 +169,7 @@ impl DadaClient {
     }
 }
 
-impl Drop for DadaClient {
+impl Drop for HduClient {
     fn drop(&mut self) {
         if self.allocated {
             debug!("Tearing down the data we allocated");
@@ -209,7 +204,7 @@ mod tests {
     fn test_connect() {
         let key = next_key();
         let _client = DadaClientBuilder::new(key).build().unwrap();
-        let _connected = DadaClient::connect(key).unwrap();
+        let _connected = HduClient::connect(key).unwrap();
     }
 
     #[test]

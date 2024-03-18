@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust-version: [stable, 1.57, nightly]
+        rust-version: [stable, 1.60, nightly]
       fail-fast: false
     env:
       RUSTFLAGS: -D warnings

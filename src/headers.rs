@@ -40,8 +40,12 @@
 //!
 //! Going from a `HashMap<String,String>`, we will print keys as is, separated by a single space with newlines separating pairs.
 
-use std::{collections::HashMap, str};
-
+use crate::{
+    client::HeaderClient,
+    errors::{PsrdadaError, PsrdadaResult},
+    io::DadaClient,
+    iter::DadaIterator,
+};
 use nom::{
     bytes::complete::{is_not, tag},
     character::complete::{line_ending, not_line_ending, space0, space1},
@@ -51,10 +55,10 @@ use nom::{
     IResult,
 };
 use psrdada_sys::ipcbuf_get_bufsz;
-
-use crate::{
-    client::{DadaClient, HeaderClient},
-    errors::{PsrdadaError, PsrdadaResult},
+use std::{
+    collections::HashMap,
+    io::{Read, Write},
+    str,
 };
 
 type RawPair<'a> = (&'a [u8], &'a [u8]);
@@ -113,49 +117,38 @@ pub fn bytes_to_header(bytes: &[u8]) -> PsrdadaResult<HashMap<String, String>> {
 }
 
 impl HeaderClient<'_> {
-    /// Push a `HashMap<String,String>` into into the header ringbuffer
+    /// Write a `HashMap<String,String>` into into the header ringbuffer
     ///
     /// # Safety
     ///
     /// There are limitations on what can be a key and a value. For example, neither
     /// can contain spaces, tabs, newlines, #, or \0. We are not validating that here so you could
     /// end up with bad bytes in the end.
-    pub unsafe fn push_header(&mut self, header: &HashMap<String, String>) -> PsrdadaResult<usize> {
+    pub unsafe fn write_header(&mut self, header: &HashMap<String, String>) -> PsrdadaResult<()> {
         let bytes = header_to_bytes(header);
         let bufsz = ipcbuf_get_bufsz(self.buf as *mut _);
-        let mut writer = self.writer();
+        let mut writer = self.writer()?;
         // Create a buffer of zeros, then copy over our header
         let mut whole_buffer = vec![0u8; bufsz as usize];
         (whole_buffer[0..bytes.len()]).copy_from_slice(&bytes);
-        writer.push(&whole_buffer)
+        // Write it out
+        let mut next_block = writer.next().ok_or(PsrdadaError::DadaWriteError)?;
+        next_block
+            .write_all(&whole_buffer)
+            .map_err(|_| PsrdadaError::DadaWriteError)?;
+        Ok(())
     }
 
-    pub fn pop_header(&mut self) -> PsrdadaResult<HashMap<String, String>> {
-        let mut reader = self.reader();
-        let bytes = match reader.pop() {
-            Some(b) => b,
-            None => return Err(PsrdadaError::HeaderEodError),
-        };
+    /// Read a block of header data from the header ringbuffer into a HashMap<String,String>
+    pub fn read_header(&mut self) -> PsrdadaResult<HashMap<String, String>> {
+        let mut reader = self.reader()?;
+        // Get the next header block
+        let mut next_block = reader.next().ok_or(PsrdadaError::DadaReadError)?;
+        let mut bytes = vec![];
+        next_block
+            .read_to_end(&mut bytes)
+            .map_err(|_| PsrdadaError::DadaReadError)?;
         bytes_to_header(&bytes)
-    }
-}
-
-impl DadaClient {
-    /// Push a `HashMap<String,String>` into the header ringbuffer
-    ///
-    /// # Safety
-    ///
-    /// There are limitations on what can be a key and a value. For example, neither
-    /// can contain spaces, tabs, newlines, #, or \0. We are not validating that here so you could
-    /// end up with bad bytes in the end.
-    pub unsafe fn push_header(&mut self, header: &HashMap<String, String>) -> PsrdadaResult<usize> {
-        let (mut hc, _) = self.split();
-        hc.push_header(header)
-    }
-
-    pub fn pop_header(&mut self) -> PsrdadaResult<HashMap<String, String>> {
-        let (mut hc, _) = self.split();
-        hc.pop_header()
     }
 }
 
@@ -245,18 +238,17 @@ mod tests {
     fn test_roundtrip_header() {
         let key = next_key();
         let mut client = DadaClientBuilder::new(key).build().unwrap();
+        let (mut hc, _) = client.split();
 
         let header = HashMap::from([
             ("foo".to_owned(), "bar".to_owned()),
             ("baz".to_owned(), "buzz".to_owned()),
         ]);
 
-        // Push
-        unsafe {
-            client.push_header(&header).unwrap();
-        }
+        // Write
+        unsafe { hc.write_header(&header).unwrap() };
 
-        // Pop
-        assert_eq!(header, client.pop_header().unwrap());
+        // Read
+        assert_eq!(header, hc.read_header().unwrap());
     }
 }
