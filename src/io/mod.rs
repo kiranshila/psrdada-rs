@@ -2,13 +2,15 @@
 //!
 //! This module reimplements the functionality from `ipcio` from the original library.
 
+use std::marker::PhantomData;
+
+use psrdada_sys::*;
+use tracing::{debug, error};
+
 use crate::{
     client::{DataClient, HeaderClient},
     errors::{PsrdadaError, PsrdadaResult},
 };
-use psrdada_sys::*;
-use std::marker::PhantomData;
-use tracing::{debug, error};
 
 mod private {
     /// Private token marker to prevent library users from calling certain trait methods
@@ -36,7 +38,7 @@ pub trait DadaClient {
 }
 
 /// The writer associated with a ringbuffer.
-/// This comes into existance locked and destructs with an unlock.
+/// This comes into existence locked and destructs with an unlock.
 pub struct Writer<'a> {
     buf: *const ipcbuf_t,
     _phantom: PhantomData<&'a ipcbuf_t>,
@@ -83,7 +85,7 @@ impl Drop for Writer<'_> {
 }
 
 /// The reader associated with a ringbuffer
-/// This comes into existance locked and destructs with an unlock.
+/// This comes into existence locked and destructs with an unlock.
 pub struct Reader<'a> {
     buf: *const ipcbuf_t,
     _phantom: PhantomData<&'a ipcbuf_t>,
@@ -189,12 +191,14 @@ impl From<i32> for State {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{Read, Write};
+
+    use test_log::test;
+
     use crate::{
         builder::DadaClientBuilder, client::HduClient, io::DadaClient, iter::DadaIterator,
         tests::next_key,
     };
-    use std::io::{Read, Write};
-    use test_log::test;
 
     #[test]
     fn test_read_write_many() {

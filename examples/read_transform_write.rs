@@ -32,7 +32,7 @@ fn main() {
                 // Double every byte
                 *x = *y * 2;
             });
-            // No need to lock, mark cleared, or anything like that. That's all implicit wil RAII.
+            // No need to lock, mark cleared, or anything like that. That's all implicit with RAII.
         } else {
             println!("Errored on getting the next write block, perhaps that buffer was destroyed?");
             break;

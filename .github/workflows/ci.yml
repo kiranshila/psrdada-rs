@@ -1,72 +1,72 @@
-on: push
-name: CI
-jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    env:
-      RUSTFLAGS: -D warnings
-      CARGO_TERM_COLOR: always
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          submodules: true
-          fetch-depth: 0
-      - uses: actions-rs/toolchain@v1
-        with:
-          # We need nightly for fmt
-          toolchain: nightly
-          override: true
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v1
-      - name: Lint (clippy)
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all-targets
-      - name: Lint (rustfmt)
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all --check
+name: Check and build the library using Nix
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  pull_request:
+    branches:
+      - main
 
-  build:
-    name: Build and test
+jobs:
+  check:
+    name: Check/Lint
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust-version: [stable, 1.60, nightly]
-      fail-fast: false
-    env:
-      RUSTFLAGS: -D warnings
-      CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@v3
+      - name: git checkout
+        uses: actions/checkout@v3
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Check Nixpkgs inputs
+        uses: DeterminateSystems/flake-checker-action@main
         with:
-          submodules: true
-          fetch-depth: 0
-      - uses: actions-rs/toolchain@v1
+          fail-mode: true
+
+      # Nix-specific logic begins here
+      - name: Check Rust formatting
+        run: |
+          nix develop --command cargo fmt --all --check
+      - name: Check Clippy lints
+        run: |
+          nix develop --command cargo clippy --all-targets
+      - name: Check spelling
+        run: |
+          nix develop --command \
+            codespell \
+              --skip target,.git \
+              --ignore-words-list crate
+
+  test_and_build:
+    name: Test and build library
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - name: git checkout
+        uses: actions/checkout@v3
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Set up Rust cache
+        uses: actions/cache@v3
         with:
-          toolchain: ${{ matrix.rust-version }}
-          override: true
-          components: llvm-tools-preview
-      - uses: Swatinem/rust-cache@v1
-      - name: Build all targets with
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --all-targets
-      - name: Tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: psrdada-rs-${{ hashFiles('**/Cargo.lock') }}
+      - name: Test library
+        run: |
+          nix develop --command cargo test
+      - name: Build library
+        run: |
+          nix develop --command cargo build
       - name: Generate code coverage
-        if: startsWith(matrix.rust-version, 'stable')
-        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+        run: nix develop --command cargo llvm-cov --workspace --lcov --output-path lcov.info
       - name: Upload coverage to Codecov
-        if: startsWith(matrix.rust-version, 'stable')
         uses: codecov/codecov-action@v3
         with:
           files: lcov.info

@@ -28,8 +28,9 @@
 //! Take the following code as an example
 //!
 //! ```rust
-//! use psrdada::prelude::*;
 //! use std::io::{Read, Write};
+//!
+//! use psrdada::prelude::*;
 //!
 //! // Build the paired client
 //! let key = 0xb0ba;
@@ -38,7 +39,7 @@
 //! // Split into individual clients
 //! let (_, mut data_client) = client.split();
 //!
-//! // Construct the writer (mutable borrow), panicing if a lock is not obtainable
+//! // Construct the writer (mutable borrow), panicking if a lock is not obtainable
 //! let mut writer = data_client.writer().unwrap();
 //!
 //! // Grab the next block in the ring (assuming we can)
@@ -53,7 +54,7 @@
 //! // Drop the writer to unlock it (this would happen also when the writer leaves scope)
 //! drop(writer);
 //!
-//! // Construct the reader (mutable borrow), panicing if a lock is not obtainable
+//! // Construct the reader (mutable borrow), panicking if a lock is not obtainable
 //! let mut reader = data_client.reader().unwrap();
 //!
 //! // Grab the next read block in the ring

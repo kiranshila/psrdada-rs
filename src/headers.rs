@@ -3,7 +3,7 @@
 //! While the header ringbuffer is just like the data ringbuffer, there is "convention" that
 //! it contains key/value pairs of ASCII plaintext. Nothing about the C abstraction guarantees that,
 //! so we still have a public API for dealing with the raw bytes. However, this module will introduce some
-//! methods that implement the serde to and from these bytes and automaticlly read and write. These methods
+//! methods that implement the serde to and from these bytes and automatically read and write. These methods
 //! are of course falliable, because who knows what people put on the header buffer.
 //!
 //! ## Parsing
@@ -40,12 +40,12 @@
 //!
 //! Going from a `HashMap<String,String>`, we will print keys as is, separated by a single space with newlines separating pairs.
 
-use crate::{
-    client::HeaderClient,
-    errors::{PsrdadaError, PsrdadaResult},
-    io::DadaClient,
-    iter::DadaIterator,
+use std::{
+    collections::HashMap,
+    io::{Read, Write},
+    str,
 };
+
 use nom::{
     bytes::complete::{is_not, tag},
     character::complete::{line_ending, not_line_ending, space0, space1},
@@ -55,10 +55,12 @@ use nom::{
     IResult,
 };
 use psrdada_sys::ipcbuf_get_bufsz;
-use std::{
-    collections::HashMap,
-    io::{Read, Write},
-    str,
+
+use crate::{
+    client::HeaderClient,
+    errors::{PsrdadaError, PsrdadaResult},
+    io::DadaClient,
+    iter::DadaIterator,
 };
 
 type RawPair<'a> = (&'a [u8], &'a [u8]);

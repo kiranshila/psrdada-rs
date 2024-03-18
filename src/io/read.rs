@@ -1,9 +1,10 @@
-use crate::iter::DadaIterator;
+use std::marker::PhantomData;
+
+use psrdada_sys::*;
+use tracing::{debug, error};
 
 use super::Reader;
-use psrdada_sys::*;
-use std::marker::PhantomData;
-use tracing::{debug, error};
+use crate::iter::DadaIterator;
 
 /// The state associated with an in-progress read. This must be dropped to perform more actions or consumed with [`done`].
 ///
@@ -19,7 +20,7 @@ impl ReadBlock<'_> {
     /// Create a [`ReadBlock`] by mutably borrowing from the [`Reader`].
     /// This ensures we can only have one at a time.
     ///
-    /// Returns an option if we successfuly got a valid block.
+    /// Returns an option if we successfully got a valid block.
     pub fn new(reader: &mut Reader) -> Option<Self> {
         // Test for EOD
         if unsafe { ipcbuf_eod(reader.buf as *mut _) } == 1 {
@@ -113,14 +114,16 @@ impl std::io::Read for ReadBlock<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{Read, Write};
+
+    use test_log::test;
+
     use crate::{
         builder::DadaClientBuilder,
         io::{read::ReadBlock, DadaClient},
         iter::DadaIterator,
         tests::next_key,
     };
-    use std::io::{Read, Write};
-    use test_log::test;
 
     #[test]
     fn test_read_write() {

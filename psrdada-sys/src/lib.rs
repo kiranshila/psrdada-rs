@@ -6,7 +6,7 @@
 // Include generated bindings
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
-// We need to include some default constructrs, as those #defines don't work in bindgen
+// We need to include some default constructors, as those #defines don't work in bindgen
 impl Default for ipcbuf_t {
     fn default() -> Self {
         Self {

@@ -1,12 +1,14 @@
+use std::{io::Write, marker::PhantomData};
+
+use psrdada_sys::*;
+use tracing::{debug, error};
+
 use super::Writer;
 use crate::iter::DadaIterator;
-use psrdada_sys::*;
-use std::{io::Write, marker::PhantomData};
-use tracing::{debug, error};
 
 /// The state associated with an in-progress write. This must be dropped (or [`commit`]ed) to perform more actions.
 ///
-/// This block comes into existance with valid data and only exists as long as the data is valid.
+/// This block comes into existence with valid data and only exists as long as the data is valid.
 pub struct WriteBlock<'a> {
     bytes_written: usize,
     write_all: bool,
@@ -20,7 +22,7 @@ impl WriteBlock<'_> {
     /// Create a [`WriteBlock`] by mutably borrowing from the [`Writer`].
     /// This ensures we can only have one at a time.
     ///
-    /// Returns an option if we successfuly got a lock and a valid block.
+    /// Returns an option if we successfully got a lock and a valid block.
     pub fn new(writer: &mut Writer) -> Option<Self> {
         // This follows `ipcio_open_block_write` from the c library
         // Grab the pointer to the next available writable memory
@@ -58,7 +60,7 @@ impl WriteBlock<'_> {
     ///
     /// Note: You must follow this with [`increment_filled`] to tell the buffer how many bytes you
     /// have written.  However, if you don't call [`increment_filled`], we will assume you wrote the
-    /// entire buffer, as that's probably the most likley usecase. Alternativley, use the `std::io::Write`
+    /// entire buffer, as that's probably the most likely usecase. Alternatively, use the `std::io::Write`
     /// trait instead. You should only really use this if you need to place certain bytes in certain
     /// places in the buffer.
     pub fn block(&mut self) -> &mut [u8] {
@@ -101,7 +103,7 @@ impl Drop for WriteBlock<'_> {
     }
 }
 
-// Implement the lending interator
+// Implement the lending iterator
 impl DadaIterator for Writer<'_> {
     type Item<'next> = WriteBlock<'next>
     where
@@ -135,9 +137,10 @@ impl Write for WriteBlock<'_> {
 
 #[cfg(test)]
 mod tests {
+    use test_log::test;
+
     use super::*;
     use crate::{builder::DadaClientBuilder, io::DadaClient, tests::next_key};
-    use test_log::test;
 
     #[test]
     fn test_write() {

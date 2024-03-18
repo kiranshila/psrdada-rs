@@ -5,3 +5,4 @@ psrdada-sys/vendor/.ccls-cache
 .vscode/
 .direnv
 result
+lcov.info
